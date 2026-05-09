@@ -1,6 +1,7 @@
 package ovh.gabrielhuav.pow.features.map_exterior.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.Job
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.osmdroid.util.GeoPoint
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -18,12 +20,17 @@ import kotlinx.coroutines.withContext
 import ovh.gabrielhuav.pow.data.cache.RoadNetworkCache
 import ovh.gabrielhuav.pow.data.cache.TileCache
 import ovh.gabrielhuav.pow.data.local.room.PowDatabase
+import ovh.gabrielhuav.pow.data.network.WebSocketManager
 import ovh.gabrielhuav.pow.data.repository.OverpassRepository
 import ovh.gabrielhuav.pow.data.repository.SettingsRepository
 import ovh.gabrielhuav.pow.domain.models.MapWay
+import ovh.gabrielhuav.pow.domain.models.Npc
+import ovh.gabrielhuav.pow.domain.models.NpcType
 import ovh.gabrielhuav.pow.domain.models.ai.NpcAiManager
 import ovh.gabrielhuav.pow.features.map_exterior.ui.components.PlayerAction
 import ovh.gabrielhuav.pow.features.settings.models.ControlType
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -37,6 +44,44 @@ import kotlin.math.abs
 
 enum class Direction { UP, DOWN, LEFT, RIGHT }
 enum class GameAction { A, B, X, Y }
+
+// Clase de datos para el payload del servidor
+data class MultiplayerPlayer(
+    val id: String,
+    val displayName: String = "",
+    val x: Double,
+    val y: Double,
+    val action: String,
+    val facingRight: Boolean
+)
+
+// Clase para empaquetar un NPC en el JSON
+data class MultiplayerNpc(
+    val id: String,
+    val x: Double,
+    val y: Double,
+    val rotation: Float,
+    val npcType: String,
+    val ownerId: String? = null,
+    val carModel: String? = null, // NUEVO: Modelo del coche
+    val carColor: Int? = null     // NUEVO: Color del coche
+)
+
+// Modelo unificado para todos los mensajes del servidor
+private data class ServerMessage(
+    val type: String? = null,
+    val id: String? = null,
+    val sessionId: String? = null,
+    val x: Double? = null,
+    val y: Double? = null,
+    val action: String? = null,
+    val facingRight: Boolean? = null,
+    val npc: MultiplayerNpc? = null,
+    val npcs: List<MultiplayerNpc>? = null,
+    val npcId: String? = null,
+    val orphanedNpcs: List<String>? = null,
+    val activeNpcIds: List<String>? = null
+)
 
 class WorldMapViewModel(
     private val roadNetworkCache: RoadNetworkCache,
@@ -60,7 +105,6 @@ class WorldMapViewModel(
         }
     }
 
-    // Ahora lee del repositorio
     private val _uiState = MutableStateFlow(
         WorldMapState(
             controlType = settingsRepository.getControlType(),
@@ -82,6 +126,161 @@ class WorldMapViewModel(
     private val REFETCH_DISTANCE_DEG = 0.015
     private val REFETCH_COOLDOWN_MS  = 5 * 60 * 1000L
 
+// ─── WEBSOCKET MULTIJUGADOR ───────────────────────────────────────────────────
+
+    private var webSocketManager: WebSocketManager? = null
+    private val gson = Gson()
+    // Stable UUID that uniquely identifies this client for the lifetime of the ViewModel.
+    // Updated to the server-assigned session ID upon receiving SESSION_INIT.
+    private var myPlayerUUID = "Player_${UUID.randomUUID()}"
+    // Display name chosen by the user (separate from the immutable UUID).
+    private var myPlayerDisplayName = ""
+    // Stores remote players AND NPC entities received from the server.
+    private val remoteEntities = ConcurrentHashMap<String, Npc>()
+
+    fun connectToMultiplayer(serverUrl: String, playerName: String) {
+        myPlayerDisplayName = playerName
+        if (webSocketManager == null) {
+            Log.d("WorldMapVM", "Iniciando conexión multijugador a $serverUrl")
+            webSocketManager = WebSocketManager(serverUrl)
+            // The SharedFlow never completes, so this collector remains active for the full
+            // ViewModel lifetime and will receive messages from any subsequent reconnects.
+            viewModelScope.launch(Dispatchers.IO) {
+                webSocketManager?.messagesFlow?.collect { messageJson ->
+                    handleMultiplayerMessage(messageJson)
+                }
+            }
+        }
+        if (webSocketManager?.isConnected() == false) {
+            webSocketManager?.connect()
+        }
+    }
+
+    fun disconnectFromMultiplayer() {
+        webSocketManager?.disconnect()
+        webSocketManager = null
+        remoteEntities.clear()
+        updateNpcsState()
+    }
+
+    private fun handleMultiplayerMessage(messageJson: String) {
+        try {
+            val msg = gson.fromJson(messageJson, ServerMessage::class.java)
+
+            when (msg.type) {
+                "SESSION_INIT" -> {
+                    // Adopt the server-assigned session ID as our authoritative player ID.
+                    msg.sessionId?.let { myPlayerUUID = it }
+                }
+
+                "SYNC_ALL_NPCS" -> {
+                    msg.npcs?.forEach { remoteNpc ->
+                        if (remoteNpc.ownerId != myPlayerUUID) {
+                            addRemoteEntity(remoteNpc)
+                        }
+                    }
+                    updateNpcsState()
+                }
+
+                "NPC_SPAWN", "NPC_UPDATE" -> {
+                    msg.npc?.let {
+                        if (it.ownerId != myPlayerUUID) {
+                            addRemoteEntity(it)
+                            updateNpcsState()
+                        }
+                    }
+                }
+
+                "NPC_BATCH_UPDATE" -> {
+                    msg.npcs?.forEach { remoteNpc ->
+                        if (remoteNpc.ownerId != myPlayerUUID) {
+                            addRemoteEntity(remoteNpc)
+                        }
+                    }
+                    updateNpcsState()
+                }
+
+                "NPC_DESTROY" -> {
+                    msg.npcId?.let {
+                        remoteEntities.remove(it)
+                        updateNpcsState()
+                    }
+                }
+
+                "DISCONNECT" -> {
+                    msg.id?.let { remoteEntities.remove(it) }
+                    // Borrar NPCs que dependían del jugador que se fue
+                    msg.orphanedNpcs?.forEach { remoteEntities.remove(it) }
+                    updateNpcsState()
+                }
+
+                "MASTER_SYNC_CHECK" -> {
+                    msg.activeNpcIds?.let { officialIds ->
+                        // Convert to Set for O(1) lookups inside the loop.
+                        val officialSet = officialIds.toSet()
+                        // LIMPIEZA ABSOLUTA: Si tenemos un NPC remoto dibujado que el servidor no reconoce, bórralo instantáneamente.
+                        val iterator = remoteEntities.iterator()
+                        var stateChanged = false
+                        while (iterator.hasNext()) {
+                            val entry = iterator.next()
+                            val npc = entry.value
+                            if (npc.isRemote && !officialSet.contains(npc.id)) {
+                                iterator.remove()
+                                stateChanged = true
+                            }
+                        }
+                        if (stateChanged) updateNpcsState()
+                    }
+                }
+
+                else -> {
+                    // Si es una actualización de posición de otro JUGADOR (sin type específico)
+                    if (msg.id != null && msg.id != myPlayerUUID && msg.x != null && msg.y != null) {
+                        val otherPlayer = Npc(
+                            id = msg.id,
+                            type = NpcType.PERSON,
+                            location = GeoPoint(msg.y, msg.x),
+                            rotationAngle = if (msg.facingRight == true) 0f else 180f,
+                            speed = 0.0,
+                            isRemote = true
+                        )
+                        remoteEntities[msg.id] = otherPlayer
+                        updateNpcsState()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WorldMapVM", "Error procesando JSON: ${e.message}")
+        }
+    }
+
+    // Función auxiliar para convertir el JSON en objeto Npc
+    private fun addRemoteEntity(remote: MultiplayerNpc) {
+        val npcType = try { NpcType.valueOf(remote.npcType) } catch(e: Exception) { NpcType.PERSON }
+
+        // Interpretar el modelo y el color, o usar defaults si fallara
+        val cModel = try { remote.carModel?.let { ovh.gabrielhuav.pow.domain.models.CarModel.valueOf(it) } ?: ovh.gabrielhuav.pow.domain.models.CarModel.SEDAN } catch (e: Exception) { ovh.gabrielhuav.pow.domain.models.CarModel.SEDAN }
+        val cColor = remote.carColor ?: 0xFFFFFFFF.toInt()
+
+        remoteEntities[remote.id] = Npc(
+            id = remote.id,
+            type = npcType,
+            location = GeoPoint(remote.y, remote.x),
+            rotationAngle = remote.rotation,
+            speed = 0.0,
+            isRemote = true,
+            ownerId = remote.ownerId,
+            carModel = cModel,
+            carColor = cColor
+        )
+    }
+
+    private fun updateNpcsState() {
+        val aiNpcs = npcAiManager.npcs.value
+        val allNpcs = aiNpcs + remoteEntities.values.toList()
+        _uiState.update { it.copy(npcs = allNpcs) }
+    }
+
     // ─── GAME LOOP ───────────────────────────────────────────────────────────────
 
     fun startGameLoop() {
@@ -91,39 +290,30 @@ class WorldMapViewModel(
             while (_uiState.value.currentLocation == null) { delay(100) }
             val initialLoc = _uiState.value.currentLocation!!
 
-            // Tiles OSM nativo → siempre local (osmdroid maneja su caché)
             if (_uiState.value.mapProvider == MapProvider.OSM) {
                 _uiState.update { it.copy(tileSource = TileSource.LOCAL_OSM) }
             }
 
-            // ── PASO 1: Intentar Room ──────────────────────────────────────────
             val cached = roadNetworkCache.get(initialLoc.latitude, initialLoc.longitude)
             if (cached != null) {
-                android.util.Log.d("WorldMapVM", "Room HIT inicio: ${roadNetworkCache.getStats()}")
-                // Marcar LOCAL_DB ANTES de applyRoadNetwork para que el widget ya lo muestre
                 _uiState.update { it.copy(roadSource = RoadSource.LOCAL_DB) }
                 applyRoadNetwork(cached, initialLoc)
                 lastNetworkFetchLocation = initialLoc
             } else {
-                // ── PASO 2: Overpass con backoff ───────────────────────────────
-                android.util.Log.d("WorldMapVM", "Room MISS inicio — Overpass")
                 _uiState.update { it.copy(roadSource = RoadSource.LOADING) }
                 var retryMs = 1_000L
 
                 while (isActive && roadNetwork.isEmpty()) {
                     val network = overpassRepository.fetchRoadNetwork(initialLoc.latitude, initialLoc.longitude)
                     if (network.isNotEmpty()) {
-                        // Marcar NETWORK mientras se usa, luego LOCAL_DB cuando ya esté guardado
                         _uiState.update { it.copy(roadSource = RoadSource.NETWORK) }
                         applyRoadNetwork(network, initialLoc)
                         lastNetworkFetchLocation = initialLoc
 
-                        // Guardar en Room y luego actualizar widget a LOCAL_DB
                         launch(Dispatchers.IO) {
                             roadNetworkCache.put(initialLoc.latitude, initialLoc.longitude, network)
                             withContext(Dispatchers.Main) {
                                 _uiState.update { it.copy(roadSource = RoadSource.LOCAL_DB) }
-                                android.util.Log.d("WorldMapVM", "Calles guardadas en Room ✓")
                             }
                         }
                         break
@@ -135,15 +325,62 @@ class WorldMapViewModel(
                 }
             }
 
-            // ── PASO 3: Game loop ~30fps ───────────────────────────────────────
+            // Game loop principal ~30fps
             while (isActive) {
                 _uiState.value.currentLocation?.let { location ->
                     maybeRefetchRoadNetwork(location)
                     if (_uiState.value.isRoadNetworkReady) {
                         tickCount++
                         if (tickCount % 3 == 0) {
+                            // Sync remote entities into AI manager so spawn/despawn limits
+                            // account for server-driven NPCs and players.
+                            npcAiManager.setRemoteNpcs(remoteEntities.values.toList())
                             npcAiManager.updateNpcs(location)
-                            _uiState.update { it.copy(npcs = npcAiManager.npcs.value) }
+                            updateNpcsState()
+
+                            // BROADCAST MULTIJUGADOR: Enviamos nuestra posición al servidor
+                            webSocketManager?.let { ws ->
+                                val myData = MultiplayerPlayer(
+                                    id = myPlayerUUID,
+                                    displayName = myPlayerDisplayName,
+                                    x = location.longitude,
+                                    y = location.latitude,
+                                    action = _uiState.value.playerAction.name,
+                                    facingRight = _uiState.value.isPlayerFacingRight
+                                )
+                                ws.sendMessage(gson.toJson(myData))
+                                // 1. Notificar NPCs que deben ser borrados (Despawn local)
+                                synchronized(npcAiManager.pendingDespawns) {
+                                    while (npcAiManager.pendingDespawns.isNotEmpty()) {
+                                        val idToRemove = npcAiManager.pendingDespawns.removeAt(0)
+                                        ws.sendMessage(gson.toJson(mapOf(
+                                            "type" to "NPC_DESTROY",
+                                            "npcId" to idToRemove
+                                        )))
+                                    }
+                                }
+
+                                // 2. Enviar actualización de NPCs LOCALES en un único mensaje batch.
+                                val myLocalNpcs = npcAiManager.npcs.value.filter { !it.isRemote }
+                                if (myLocalNpcs.isNotEmpty()) {
+                                    val npcBatch = myLocalNpcs.map { localNpc ->
+                                        MultiplayerNpc(
+                                            id = localNpc.id,
+                                            x = localNpc.location.longitude,
+                                            y = localNpc.location.latitude,
+                                            rotation = localNpc.rotationAngle,
+                                            npcType = localNpc.type.name,
+                                            ownerId = myPlayerUUID,
+                                            carModel = localNpc.carModel.name,
+                                            carColor = localNpc.carColor
+                                        )
+                                    }
+                                    ws.sendMessage(gson.toJson(mapOf(
+                                        "type" to "NPC_BATCH_UPDATE",
+                                        "npcs" to npcBatch
+                                    )))
+                                }
+                            }
                         }
                     }
                 }
@@ -161,9 +398,6 @@ class WorldMapViewModel(
         withContext(Dispatchers.Main) {
             _uiState.update { it.copy(currentLocation = snapped, isRoadNetworkReady = true) }
         }
-        // Zoom-in cinematográfico: diferente según proveedor
-        // OSM nativo: 17 → 21 (tiles locales, rápido)
-        // Proveedores web: 17 → 18 (tiles remotos, menos zoom para cargar bien)
         val targetZoom = if (_uiState.value.mapProvider.isWebProvider)
             WorldMapState.ZOOM_GAMEPLAY_WEB
         else
@@ -193,7 +427,6 @@ class WorldMapViewModel(
             try {
                 val cached = roadNetworkCache.get(currentLoc.latitude, currentLoc.longitude)
                 if (cached != null) {
-                    android.util.Log.d("WorldMapVM", "Room HIT al moverse")
                     withContext(Dispatchers.Main) {
                         roadNetwork = cached
                         npcAiManager.updateRoadNetwork(cached)
@@ -201,7 +434,6 @@ class WorldMapViewModel(
                         _uiState.update { it.copy(roadSource = RoadSource.LOCAL_DB) }
                     }
                 } else {
-                    android.util.Log.d("WorldMapVM", "Room MISS al moverse — Overpass")
                     withContext(Dispatchers.Main) {
                         _uiState.update { it.copy(roadSource = RoadSource.NETWORK) }
                     }
@@ -213,7 +445,6 @@ class WorldMapViewModel(
                             roadNetwork = network
                             npcAiManager.updateRoadNetwork(network)
                             lastNetworkFetchLocation = currentLoc
-                            // Una vez guardado en Room, mostrar LOCAL_DB
                             _uiState.update { it.copy(roadSource = RoadSource.LOCAL_DB) }
                         }
                     }
@@ -224,8 +455,6 @@ class WorldMapViewModel(
         }
     }
 
-    // ─── NOTIFICACIÓN DE TILES (WebView) ─────────────────────────────────────────
-
     fun notifyTileSource(fromCache: Boolean) {
         if (_uiState.value.mapProvider == MapProvider.OSM) return
         val source = if (fromCache) TileSource.LOCAL_CACHE else TileSource.NETWORK
@@ -234,16 +463,13 @@ class WorldMapViewModel(
         }
     }
 
-    // ─── MOVIMIENTO ───────────────────────────────────────────────────────────────
-
     fun moveCharacter(direction: Direction) {
         val loc = _uiState.value.currentLocation ?: return
         if (!_uiState.value.isRoadNetworkReady || roadNetwork.isEmpty()) return
-        // Determinar hacia dónde mira basado en D-Pad
         val isMovingRight = when (direction) {
             Direction.RIGHT -> true
             Direction.LEFT -> false
-            else -> null // Si va arriba/abajo, mantiene la dirección actual
+            else -> null
         }
         startMovementAction(isMovingRight)
 
@@ -269,25 +495,21 @@ class WorldMapViewModel(
         }
     }
 
-    // Movimiento por joystick
     fun moveCharacterByAngle(angleRad: Double) {
         val loc = _uiState.value.currentLocation ?: return
         if (!_uiState.value.isRoadNetworkReady || roadNetwork.isEmpty()) return
 
-        // Determinar hacia dónde mira basado en el Joystick (Coseno determina X/Longitud)
         val dx = cos(angleRad)
         val isMovingRight = if (abs(dx) > 0.01) dx > 0 else null
         startMovementAction(isMovingRight)
 
         val step = if (_uiState.value.isRunning) 0.000006 else 0.000003
 
-        // Calculamos el nuevo punto destino (Seno para Y/Latitud, Coseno para X/Longitud)
         val temp = GeoPoint(
             loc.latitude + sin(angleRad) * step,
             loc.longitude + cos(angleRad) * step
         )
 
-        // Lógica existente de Snap-to-Road (ajuste a la calle)
         val nearest = getNearestPointOnNetwork(temp)
         val dist = distance(temp, nearest)
         val radius = 0.000012
@@ -303,12 +525,9 @@ class WorldMapViewModel(
         }
     }
 
-
     fun updateControlSettings(type: ControlType, scale: Float, swap: Boolean) {
         _uiState.update { it.copy(controlType = type, controlsScale = scale, swapControls = swap) }
     }
-
-    // ─── SPATIAL INDEX ────────────────────────────────────────────────────────────
 
     private data class Seg(val s: GeoPoint, val e: GeoPoint,
                            val minLat: Double, val maxLat: Double, val minLon: Double, val maxLon: Double)
@@ -369,8 +588,6 @@ class WorldMapViewModel(
     private fun distance(a: GeoPoint, b: GeoPoint): Double =
         sqrt((a.latitude - b.latitude).pow(2) + (a.longitude - b.longitude).pow(2))
 
-    // ─── API PÚBLICA ──────────────────────────────────────────────────────────────
-
     fun updateInitialLocation(lat: Double, lon: Double) {
         if (_uiState.value.isLoadingLocation)
             _uiState.update { it.copy(currentLocation = GeoPoint(lat, lon), isLoadingLocation = false) }
@@ -379,11 +596,7 @@ class WorldMapViewModel(
     fun updateActionState(action: GameAction, isPressed: Boolean) {
         when (action) {
             GameAction.A -> {
-                // Actualizamos el estado de correr inmediatamente
                 _uiState.update { it.copy(isRunning = isPressed) }
-
-                // Transición fluida: Si suelta el botón mientras se movía, lo regresamos a WALK.
-                // Si lo presiona mientras ya se estaba moviendo, lo pasamos a RUN.
                 val currentAction = _uiState.value.playerAction
                 if (isPressed && currentAction == PlayerAction.WALK) {
                     _uiState.update { it.copy(playerAction = PlayerAction.RUN) }
@@ -393,24 +606,18 @@ class WorldMapViewModel(
             }
             GameAction.B -> {
                 if (isPressed) {
-                    // MIENTRAS mantenga presionado, hace el ataque/acción especial
                     _uiState.update { it.copy(playerAction = PlayerAction.SPECIAL) }
-                    idleJob?.cancel() // Evitamos que el sistema de inactividad interrumpa el golpe
+                    idleJob?.cancel()
                 } else {
-                    // AL SOLTAR, vuelve a IDLE (Si el usuario sigue moviendo el joystick,
-                    // el próximo tick del motor gráfico lo pasará a WALK automáticamente)
                     _uiState.update { it.copy(playerAction = PlayerAction.IDLE) }
                 }
             }
-            else -> {
-                android.util.Log.d("GameAction", "$action - isPressed: $isPressed")
-            }
+            else -> {}
         }
     }
 
     fun setMapProvider(provider: MapProvider) {
         val ts = if (provider == MapProvider.OSM) TileSource.LOCAL_OSM else TileSource.NETWORK
-        // Ajustar zoom al cambiar de proveedor si ya estamos en gameplay
         val currentZoom = _uiState.value.zoomLevel
         val newZoom = when {
             provider == MapProvider.OSM && currentZoom < WorldMapState.ZOOM_GAMEPLAY_OSM ->
@@ -430,7 +637,11 @@ class WorldMapViewModel(
     fun zoomIn()  = _uiState.update { if (it.zoomLevel < 22.0) it.copy(zoomLevel = it.zoomLevel + 1.0) else it }
     fun zoomOut() = _uiState.update { if (it.zoomLevel > 14.0) it.copy(zoomLevel = it.zoomLevel - 1.0) else it }
 
-    override fun onCleared() { super.onCleared(); tileCache.closeAll() }
+    override fun onCleared() {
+        super.onCleared()
+        tileCache.closeAll()
+        webSocketManager?.disconnect()
+    }
 
     private var idleJob: Job? = null
 
@@ -438,10 +649,8 @@ class WorldMapViewModel(
         idleJob?.cancel()
 
         val newFacingRight = isMovingRight ?: _uiState.value.isPlayerFacingRight
-        // Verificamos el estado de isRunning para saber qué acción ejecutar
         val currentAction = if (_uiState.value.isRunning) PlayerAction.RUN else PlayerAction.WALK
 
-        // No interrumpimos la animación SPECIAL si el jugador está golpeando (opcional, puedes quitar esta validación si quieres cancelar el golpe al moverse)
         if (_uiState.value.playerAction != PlayerAction.SPECIAL) {
             if (_uiState.value.playerAction != currentAction || _uiState.value.isPlayerFacingRight != newFacingRight) {
                 _uiState.update {

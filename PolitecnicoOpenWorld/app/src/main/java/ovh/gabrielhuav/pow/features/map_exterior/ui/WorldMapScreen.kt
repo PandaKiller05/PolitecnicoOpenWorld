@@ -76,7 +76,11 @@ fun WorldMapScreen(
 
     DisposableEffect(Unit) {
         viewModel.startGameLoop()
-        onDispose { viewModel.stopGameLoop() }
+        // Ya no conectamos automáticamente aquí, el MainActivity se encarga de eso.
+        onDispose {
+            viewModel.stopGameLoop()
+            viewModel.disconnectFromMultiplayer() // Desconecta al salir al menú
+        }
     }
 
     val tileCache = viewModel.tileCache
