@@ -108,15 +108,23 @@ data class WorldMapState(
     // Cuando está activado, se pintan los 6 marcadores fijos de los edificios
     // y el bounding box de ESCOM sobre el mapa, para ajustar coordenadas.
     val showInteriorDebugOverlay: Boolean = false,
+
+    // NUEVAS VARIABLES PARA EL CREADOR DE RUTAS
+    val routeDebugWaypoints: List<GeoPoint> = emptyList(), // Las "migas de pan"
+    val isParkingSlotMode: Boolean = false,                // Flag del Checkbox
+    val currentWayId: Int = 100,                           // ID del carril actual
+
+    // Easter Eggs y Opciones extra
     val showRoadNetwork: Boolean = true,
 
     // ─── ShineCTO Easter Egg ────────────────────────────────────────────────
     val showShineCTODiscovery: Boolean = false,
     val navigateToShineCTO: Boolean = false,
+
     // ─── ESCOM Door transition ───────────────────────────────────────────────
     val showEscomDoorFade: Boolean = false,
     val escomDoorFadeComplete: Boolean = false,
-    
+
     // ─── Metro Stations ───────────────────────────────────────────────────────
     val metroStations: List<ovh.gabrielhuav.pow.domain.models.MetroStation> = emptyList(),
     val nearbyMetroStation: ovh.gabrielhuav.pow.domain.models.MetroStation? = null,

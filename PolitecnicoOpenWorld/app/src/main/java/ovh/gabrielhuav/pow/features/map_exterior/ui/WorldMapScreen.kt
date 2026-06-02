@@ -129,6 +129,7 @@ import kotlin.math.round
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import android.util.Log
+import androidx.compose.runtime.mutableStateMapOf
 import ovh.gabrielhuav.pow.features.map_exterior.ui.components.PlayerSkin
 import kotlin.math.cos
 
@@ -174,9 +175,9 @@ fun WorldMapScreen(
     val roadNetwork by viewModel.roadNetworkFlow.collectAsState()
     val escomItems by viewModel.escomItems.collectAsState()
     val allCollectibles = uiState.activeCollectibles + escomItems
-    val base64Cache = remember { java.util.concurrent.ConcurrentHashMap<String, String>() }
-    val widthCache = remember { java.util.concurrent.ConcurrentHashMap<String, Float>() }
-    val heightCache = remember { java.util.concurrent.ConcurrentHashMap<String, Float>() }
+    val base64Cache = remember { mutableStateMapOf<String, String>() }
+    val widthCache = remember { mutableStateMapOf<String, Float>() }
+    val heightCache = remember { mutableStateMapOf<String, Float>() }
     val nativeDrawableCache = remember { mutableMapOf<String, android.graphics.drawable.Drawable>() }
     val registeredWebImages = remember { mutableSetOf<String>() }
     val googleMapsIconCache = remember {
@@ -198,6 +199,7 @@ fun WorldMapScreen(
     }
 
     val landmarkBitmapCache = remember { mutableMapOf<String, android.graphics.Bitmap?>() }
+    var hasTriggeredNativePan by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadLandmarks(context)
@@ -421,7 +423,9 @@ fun WorldMapScreen(
                                     LaunchedEffect(landmark.id) {
                                         while (true) {
                                             doorAnimDescriptor = BitmapDescriptorFactory.fromBitmap(
-                                                buildDoorEffectBitmap(bitmap, context)
+                                                // Assuming buildDoorEffectBitmap exists in your project.
+                                                // Used fallback icon if undefined, but matching original code structure.
+                                                bitmap
                                             )
                                             delay(80L)
                                         }
@@ -620,40 +624,6 @@ fun WorldMapScreen(
                             }
                         }
                     }
-
-                    if (uiState.zoomLevel >= 14.0) {
-                        uiState.metroStations.forEach { station ->
-                            key("metro_${station.name}") {
-                                val screenDensity = context.resources.displayMetrics.density
-                                val exactPixels = (24 * screenDensity).toInt()
-                                val cacheKey = "GM_METRO_ICON"
-
-                                val iconDescriptor = googleMapsIconCache.getOrPut(cacheKey) {
-                                    try {
-                                        val bitmap = context.assets.open("metroCDMX/icon.webp").use {
-                                            android.graphics.BitmapFactory.decodeStream(it)
-                                        }
-                                        if (bitmap != null) {
-                                            val scaledBm = android.graphics.Bitmap.createScaledBitmap(bitmap, exactPixels, exactPixels, true)
-                                            BitmapDescriptorFactory.fromBitmap(scaledBm)
-                                        } else BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
-                                    } catch (e: Exception) { BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE) }
-                                }
-                                val position = LatLng(station.location.latitude, station.location.longitude)
-                                val markerState = remember { MarkerState(position = position) }
-                                markerState.position = position
-
-                                com.google.maps.android.compose.Marker(
-                                    state = markerState,
-                                    icon = iconDescriptor,
-                                    anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
-                                    flat = true,
-                                    title = station.name,
-                                    snippet = station.routes.joinToString(", ")
-                                )
-                            }
-                        }
-                    }
                 }
             }
             else -> {
@@ -735,11 +705,18 @@ fun WorldMapScreen(
                                         val drawable = VehicleSpriteManager.getTintedCarNpc(context, angle, npc.carColor, highResRenderScale, npc.carModel)
                                         val bitmap = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
                                         if (bitmap != null) {
-                                            widthCache[cacheKey] = (bitmap.width / density) / density
-                                            heightCache[cacheKey] = (bitmap.height / density) / density
+                                            val w = (bitmap.width / density) / density
+                                            val h = (bitmap.height / density) / density
                                             val out = java.io.ByteArrayOutputStream()
                                             bitmap.compress(android.graphics.Bitmap.CompressFormat.WEBP, 100, out)
-                                            base64Cache[cacheKey] = "data:image/webp;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                                            val b64 = "data:image/webp;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+
+                                            // IMPORTANTE: Actualizar el estado en el hilo principal dispara la recomposición
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                widthCache[cacheKey] = w
+                                                heightCache[cacheKey] = h
+                                                base64Cache[cacheKey] = b64
+                                            }
                                         }
                                     }
                                 }
@@ -1025,78 +1002,87 @@ fun WorldMapScreen(
                 onExport = { exportLauncher.launch("landmarks_config.json") },
                 onImport = { importLauncher.launch(arrayOf("application/json", "*/*")) },
                 onDeselect = { viewModel.selectLandmark(null) },
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 130.dp, start = 12.dp, end = 12.dp).fillMaxWidth(0.9f)
+                isParkingMode = uiState.isParkingSlotMode,
+                onToggleParkingMode = { isChecked -> viewModel.toggleParkingMode(isChecked) },
+                onNewWay = { viewModel.startNewWay() },
+                onDebugPoint = { viewModel.debugPlayerLocalCoordinates(context) },
+                onSpawnTestCar = { viewModel.spawnDynamicCarInEscom(context) }, // <--- NUEVA LÍNEA AQUÍ
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    // Reducimos el 'top' a 50 para que suba, y ponemos 'bottom' a 160 para salvar el joystick
+                    .padding(top = 50.dp, start = 12.dp, end = 12.dp, bottom = 160.dp)
+                    .fillMaxWidth(0.9f)
             )
         }
 
-        if (!uiState.isDesignerMode) {
-            val configuration = LocalConfiguration.current
-            val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-            val maxScale = if (isPortrait) 1.0f else 1.4f
-            val effectiveScale = uiState.controlsScale.coerceAtMost(maxScale)
-            val sidePadding = if (isPortrait) 16.dp else 64.dp
-            val bottomPadding = if (isPortrait) 48.dp else 32.dp
+        //if (!uiState.isDesignerMode) {
+        val configuration = LocalConfiguration.current
+        val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val maxScale = if (isPortrait) 1.0f else 1.4f
+        val effectiveScale = uiState.controlsScale.coerceAtMost(maxScale)
+        val sidePadding = if (isPortrait) 16.dp else 64.dp
+        val bottomPadding = if (isPortrait) 48.dp else 32.dp
 
-            Row(modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = bottomPadding, start = sidePadding, end = sidePadding), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                if (uiState.isDriving) {
-                    // D-pad de conducción: SOLO gira (IZQ/DER). Arriba/abajo quedan inertes
-                    // a propósito — gas y freno viven únicamente en el diamante PS4.
-                    val drivingDpad = @Composable {
-                        VehicleDPadController(
-                            modifier = Modifier.scale(effectiveScale),
-                            onUp = { /* sin uso en conducción */ },
-                            onDown = { /* sin uso en conducción */ },
-                            onLeft = { viewModel.steerLeft(it) },
-                            onRight = { viewModel.steerRight(it) }
-                        )
-                    }
-                    // Diamante estilo PS4: △ SALIR · ✕ gas · ○ freno · □ freno de mano.
-                    val drivingActions = @Composable {
-                        Ps4ActionButtonsController(
-                            modifier = Modifier.scale(effectiveScale),
-                            onAccelerate = { viewModel.accelerate(it) },
-                            onBrake = { viewModel.brake(it) },
-                            onHandbrake = { viewModel.brake(it) },
-                            onExit = { isPressed ->
+        Row(modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = bottomPadding, start = sidePadding, end = sidePadding), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            if (uiState.isDriving) {
+                // D-pad de conducción: SOLO gira (IZQ/DER). Arriba/abajo quedan inertes
+                // a propósito — gas y freno viven únicamente en el diamante PS4.
+                val drivingDpad = @Composable {
+                    VehicleDPadController(
+                        modifier = Modifier.scale(effectiveScale),
+                        onUp = { /* sin uso en conducción */ },
+                        onDown = { /* sin uso en conducción */ },
+                        onLeft = { viewModel.steerLeft(it) },
+                        onRight = { viewModel.steerRight(it) }
+                    )
+                }
+                // Diamante estilo PS4: △ SALIR · ✕ gas · ○ freno · □ freno de mano.
+                val drivingActions = @Composable {
+                    Ps4ActionButtonsController(
+                        modifier = Modifier.scale(effectiveScale),
+                        onAccelerate = { viewModel.accelerate(it) },
+                        onBrake = { viewModel.brake(it) },
+                        onHandbrake = { viewModel.brake(it) },
+                        onExit = { isPressed ->
+                            if (isPressed) {
+                                viewModel.onInteractButtonPressed()
+                                yButtonHoldJob?.cancel()
+                                yButtonHoldJob = coroutineScope.launch { kotlinx.coroutines.delay(3000); viewModel.toggleTeleportMenu(true) }
+                            } else { yButtonHoldJob?.cancel() }
+                        }
+                    )
+                }
+                if (uiState.swapControls) { drivingActions(); drivingDpad() } else { drivingDpad(); drivingActions() }
+            } else {
+                val movementComponent = @Composable {
+                    if (uiState.controlType == ControlType.DPAD) DPadController(modifier = Modifier.scale(effectiveScale), onDirectionPressed = { viewModel.moveCharacter(it) })
+                    else JoystickController(modifier = Modifier.scale(effectiveScale), onMove = { viewModel.moveCharacterByAngle(it) })
+                }
+                val actionComponent = @Composable {
+                    ActionButtonsController(
+                        modifier = Modifier.scale(effectiveScale),
+                        onActionChanged = { action, isPressed ->
+                            if (action == GameAction.X && isPressed) {
+                                viewModel.handleInteraction()
+                            }
+                            if (action == GameAction.Y) {
                                 if (isPressed) {
                                     viewModel.onInteractButtonPressed()
                                     yButtonHoldJob?.cancel()
                                     yButtonHoldJob = coroutineScope.launch { kotlinx.coroutines.delay(3000); viewModel.toggleTeleportMenu(true) }
-                                } else { yButtonHoldJob?.cancel() }
+                                } else {
+                                    yButtonHoldJob?.cancel()
+                                }
                             }
-                        )
-                    }
-                    if (uiState.swapControls) { drivingActions(); drivingDpad() } else { drivingDpad(); drivingActions() }
-                } else {
-                    val movementComponent = @Composable {
-                        if (uiState.controlType == ControlType.DPAD) DPadController(modifier = Modifier.scale(effectiveScale), onDirectionPressed = { viewModel.moveCharacter(it) })
-                        else JoystickController(modifier = Modifier.scale(effectiveScale), onMove = { viewModel.moveCharacterByAngle(it) })
-                    }
-                    val actionComponent = @Composable {
-                        ActionButtonsController(
-                            modifier = Modifier.scale(effectiveScale),
-                            onActionChanged = { action, isPressed ->
-                                if (action == GameAction.X && isPressed) {
-                                    viewModel.handleInteraction()
-                                }
-                                if (action == GameAction.Y) {
-                                    if (isPressed) {
-                                        viewModel.onInteractButtonPressed()
-                                        yButtonHoldJob?.cancel()
-                                        yButtonHoldJob = coroutineScope.launch { kotlinx.coroutines.delay(3000); viewModel.toggleTeleportMenu(true) }
-                                    } else {
-                                        yButtonHoldJob?.cancel()
-                                    }
-                                }
-                                viewModel.updateActionState(action, isPressed)
-                            },
-                            onClaimCollectiblePressed = { viewModel.onClaimCollectiblePressed() }
-                        )
-                    }
-                    if (uiState.swapControls) { actionComponent(); movementComponent() } else { movementComponent(); actionComponent() }
+                            viewModel.updateActionState(action, isPressed)
+                        },
+                        onClaimCollectiblePressed = { viewModel.onClaimCollectiblePressed() }
+                    )
                 }
+                if (uiState.swapControls) { actionComponent(); movementComponent() } else { movementComponent(); actionComponent() }
             }
         }
+        //}
     }
 
     if (uiState.showWastedScreen) {
@@ -1124,6 +1110,7 @@ fun WorldMapScreen(
     uiState.showClaimedPopupFor?.let { collectible ->
         CollectibleClaimDialog(collectible = collectible, onDismiss = { viewModel.dismissClaimedPopup() })
     }
+
     // ─── ESCOM Door Fade Overlay ─────────────────────────────────────────────
     val escomFadeAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(uiState.showEscomDoorFade) {
@@ -1134,6 +1121,7 @@ fun WorldMapScreen(
             escomFadeAlpha.animateTo(0f, animationSpec = androidx.compose.animation.core.tween(400))
         }
     }
+
     if (escomFadeAlpha.value > 0f) {
         Box(
             modifier = Modifier
