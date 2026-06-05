@@ -227,6 +227,25 @@ internal fun NativeOsmMap(
                 overlays.add(fog)
                 setTag(ovh.gabrielhuav.pow.R.id.route_overlay_tag + 600, fog)
                 nativeMapRef.value = this
+
+                setTag(ovh.gabrielhuav.pow.R.id.route_overlay_tag + 600, fog)
+                nativeMapRef.value = this
+
+                // --- INICIO CÓDIGO VOCA 9 ---
+                val voca9Overlay = org.osmdroid.views.overlay.GroundOverlay()
+                val voca9Drawable = androidx.core.content.ContextCompat.getDrawable(ctx, ovh.gabrielhuav.pow.R.drawable.mapa_voca9)
+                voca9Overlay.setImage(voca9Drawable)
+
+                val pArribaIzquierda = org.osmdroid.util.GeoPoint(19.4563, -99.1685)
+                val pAbajoDerecha = org.osmdroid.util.GeoPoint(19.4545, -99.1662)
+
+                voca9Overlay.setPosition(pArribaIzquierda, pAbajoDerecha)
+                this.overlays.add(0, voca9Overlay)
+                // --- FIN CÓDIGO VOCA 9 ---
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+
             }
         },
         modifier = Modifier.fillMaxSize(),

@@ -1749,7 +1749,6 @@ class WorldMapViewModel(
             state.copy(landmarks = updated)
         }
     }
-
     fun scaleSelectedLandmark(scale: Float) {
         val id = _uiState.value.selectedLandmarkId ?: return
         _uiState.update { state ->
@@ -1922,15 +1921,27 @@ class WorldMapViewModel(
             }
         }
         _uiState.update {
-            it.copy(
-                currentLocation = newLocation,
-                showTeleportMenu = false,
-                isRoadNetworkReady = false,
-                isMapReady = false,        // ← re-activa la compuerta: no soltar hasta descargar
-                isUserPanningMap = false,  // ← recentra el mapa y reactiva la neblina
-                wantedLevel = 0,
-                carjackWarning = null
-            )
+            _uiState.update { currentState ->
+                // Validamos si la nueva ubicación está dentro de nuestra zona restringida
+                val isTryingToEnterVoca9 = isInsideVoca9(newLocation.latitude, newLocation.longitude)
+
+                if (isTryingToEnterVoca9) {
+                    // Opcional: Log para depuración profesional
+                    android.util.Log.d("Voca9Collision", "Acceso denegado a Voca 9")
+                    currentState // Retornamos el estado SIN cambios (el jugador no se mueve)
+                } else {
+                    // Si no intenta entrar, permitimos la actualización normal
+                    currentState.copy(
+                        currentLocation = newLocation,
+                        showTeleportMenu = false,
+                        isRoadNetworkReady = false,
+                        isMapReady = false,
+                        isUserPanningMap = false,
+                        wantedLevel = 0,
+                        carjackWarning = null
+                    )
+                }
+            }
         }
         lastNetworkFetchLocation = null
         lastFetchAttemptMs = 0L
@@ -2599,7 +2610,10 @@ class WorldMapViewModel(
         return abs(lat - ESCOM_BASE_LAT) < ESCOM_OFFSET &&
                 abs(lon - ESCOM_BASE_LON) < ESCOM_OFFSET
     }
-
+    private fun isInsideVoca9(lat: Double, lon: Double): Boolean {
+        // Bloquea el paso si la latitud y longitud tocan el rectángulo de la Voca 9
+        return lat in 19.4545..19.4563 && lon in -99.1685..-99.1662
+    }
 
     fun checkDestinationArrival() {
         val destination = _uiState.value.destinationMarker ?: return

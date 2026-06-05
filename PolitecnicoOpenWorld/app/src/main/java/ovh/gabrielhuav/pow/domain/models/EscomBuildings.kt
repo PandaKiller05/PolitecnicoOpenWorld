@@ -93,3 +93,12 @@ object EscomBoundingBox {
     val bottomRight = GeoPoint(CENTER_LAT - HALF_OFFSET, CENTER_LON + HALF_OFFSET)
     val bottomLeft = GeoPoint(CENTER_LAT - HALF_OFFSET, CENTER_LON - HALF_OFFSET)
 }
+/**
+ * Bounding box para las colisiones de Voca 9 (CECYT 9)
+ */
+object Voca9BoundingBox {
+    val topLeft = GeoPoint(19.4563, -99.1685)
+    val topRight = GeoPoint(19.4563, -99.1662)
+    val bottomRight = GeoPoint(19.4545, -99.1662)
+    val bottomLeft = GeoPoint(19.4545, -99.1685)
+}
