@@ -23,6 +23,15 @@ enum class InteriorBuilding(
     val backgroundAsset: String,
     val routeName: String
 ) {
+
+    VOCA9(
+        id = "voca9",
+        displayName = "CECyT 9 Bátiz",
+        location = GeoPoint(19.45370, -99.17540),
+        backgroundAsset = "BUILDINGS/IPN/building_voca9.webp",
+        routeName = "interior_voca9"
+    ),
+
     AUDITORIO(
         id = "auditorio",
         displayName = "Auditorio",

@@ -62,5 +62,13 @@
     "defaultScale": 0.15,
     "baseWidthMeters": 80.0,
     "baseHeightMeters": 55.0
+  },
+  {
+    "id": "voca9",
+    "displayName": "CECyT 9 Bátiz",
+    "assetPath": "BUILDINGS/IPN/building_voca9.webp",
+    "defaultScale": 0.15,
+    "baseWidthMeters": 150.0,
+    "baseHeightMeters": 150.0
   }
 ]

@@ -1056,6 +1056,19 @@ class WorldMapViewModel(
             loc.longitude + cos(angleRad) * step
         )
 
+
+// --- INICIO COLISIÓN VOCA 9 (CECyT 9) ---
+        val voca9MinLat = 19.453300
+        val voca9MaxLat = 19.454200
+        val voca9MinLon = -99.176000
+        val voca9MaxLon = -99.174800
+
+        if (temp.latitude in voca9MinLat..voca9MaxLat && temp.longitude in voca9MinLon..voca9MaxLon) {
+            return
+        }
+        // --- FIN COLISIÓN VOCA 9 ---
+
+
         val nearest = getNearestPointOnNetwork(temp)
         val dist = distance(temp, nearest)
         val radius = 0.000012
