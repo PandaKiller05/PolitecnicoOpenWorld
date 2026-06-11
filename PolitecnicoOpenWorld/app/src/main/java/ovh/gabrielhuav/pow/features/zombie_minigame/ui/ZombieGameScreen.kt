@@ -87,12 +87,13 @@ fun ZombieGameScreen(
     isMultiplayer: Boolean,
     playerName: String,
     onNavigateToSettings: () -> Unit = {},
-    debugHitboxes: Boolean = false
+    debugHitboxes: Boolean = false,
+    initialRoomId: String? = null
 ) {
     val context = LocalContext.current
     val serverUrl = if (isMultiplayer) ovh.gabrielhuav.pow.BuildConfig.ZOMBIE_SERVER_URL else null
     val viewModel: ZombieGameViewModel = viewModel(
-        factory = ZombieGameViewModel.Factory(context, serverUrl, playerName)
+        factory = ZombieGameViewModel.Factory(context, serverUrl, playerName, initialRoomId)
     )
     val state by viewModel.state.collectAsState()
     val density = LocalDensity.current

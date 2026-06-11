@@ -270,11 +270,12 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // NUEVO BLOQUE: Navegar al minijuego tras el fade de la puerta
+                            // NUEVO BLOQUE: Navegar al interior tras el fade de la puerta
                             LaunchedEffect(uiState.escomDoorFadeComplete) {
                                 if (uiState.escomDoorFadeComplete) {
+                                    val destinationRoom = uiState.pendingInteriorDestination?.id ?: "lobby_campus"
                                     worldMapViewModel.consumeEscomDoorNavigation()
-                                    navController.navigate("zombie_minigame")
+                                    navController.navigate("zombie_minigame/$destinationRoom")
                                 }
                             }
 
@@ -378,6 +379,30 @@ class MainActivity : ComponentActivity() {
                         // popBackStack hasta world_map para preservar el open world.
                         // debugHitboxes = true para calibrar exitHitbox y ver la
                         // matriz de colisión pintada sobre cada cuarto.
+                        composable(
+                            route = "zombie_minigame/{roomId}",
+                            arguments = listOf(
+                                androidx.navigation.navArgument("roomId") {
+                                    type = androidx.navigation.NavType.StringType
+                                    defaultValue = "lobby_campus"
+                                }
+                            )
+                        ) { backStackEntry ->
+                            val roomId = backStackEntry.arguments?.getString("roomId") ?: "lobby_campus"
+                            val wmState by worldMapViewModel.uiState.collectAsState()
+                            ZombieGameScreen(
+                                onExitToWorld = {
+                                    navController.popBackStack("world_map", inclusive = false)
+                                },
+                                isMultiplayer = wmState.isMultiplayer,
+                                playerName = wmState.playerName,
+                                onNavigateToSettings = { navController.navigate("settings") },
+                                debugHitboxes = false,
+                                initialRoomId = roomId
+                            )
+                        }
+
+                        // Retrocompatibilidad con la ruta sin ID
                         composable(route = "zombie_minigame") {
                             val wmState by worldMapViewModel.uiState.collectAsState()
                             ZombieGameScreen(
@@ -387,7 +412,8 @@ class MainActivity : ComponentActivity() {
                                 isMultiplayer = wmState.isMultiplayer,
                                 playerName = wmState.playerName,
                                 onNavigateToSettings = { navController.navigate("settings") },
-                                debugHitboxes = false
+                                debugHitboxes = false,
+                                initialRoomId = "lobby_campus"
                             )
                         }
 

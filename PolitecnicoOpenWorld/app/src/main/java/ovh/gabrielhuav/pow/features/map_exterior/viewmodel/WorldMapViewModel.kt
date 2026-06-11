@@ -385,6 +385,10 @@ class WorldMapViewModel(
     internal val ESCOM_BASE_LON = -99.14674
     internal val ESCOM_OFFSET = 0.001
 
+    internal val VOCA9_BASE_LAT = 19.45371
+    internal val VOCA9_BASE_LON = -99.17540
+    internal val VOCA9_OFFSET = 0.0005
+
     internal val ESCOM_DOOR_ASSET = "DOORS/ESCOM_DOOR.webp"
     internal val ESCOM_DOOR_INTERACT_RADIUS = 0.00020   // ~20 m
 
@@ -2034,8 +2038,11 @@ class WorldMapViewModel(
         val doorItems = _uiState.value.landmarks
             .filter { it.assetPath.contains("DOORS/") }
             .map { doorLandmark ->
+                // Detección inteligente: si es el asset de Voca 9, le ponemos su prefijo
+                val isVoca = doorLandmark.assetPath.contains("VOCA9_DOOR", ignoreCase = true)
+                val prefix = if (isVoca) "voca_door_" else "escom_door_"
                 ActiveCollectible(
-                    id = "escom_door_${doorLandmark.id}",
+                    id = "$prefix${doorLandmark.id}",
                     name = doorLandmark.name,
                     description = "Puerta interactiva",
                     assetPath = doorLandmark.assetPath,
@@ -2055,7 +2062,7 @@ class WorldMapViewModel(
         val distanceInMeters = playerGeo.distanceToAsDouble(itemGeo)
 
         // 4. Radio de detección especial para las puertas (20 metros) o estándar para objetos (15 metros)
-        val radius = if (activeItem.id.startsWith("escom_door_")) ESCOM_DOOR_INTERACT_RADIUS * 100000 else 15.0
+        val radius = if (activeItem.id.startsWith("escom_door_") || activeItem.id.startsWith("voca_door_")) ESCOM_DOOR_INTERACT_RADIUS * 100000 else 15.0
 
         if (distanceInMeters <= radius) {
             if (_uiState.value.nearbyCollectible?.id != activeItem.id) {
@@ -2065,7 +2072,7 @@ class WorldMapViewModel(
                     val promptText = when {
                         activeItem.name == "Objeto Misterioso ESCOM" -> "PRESIONA X PARA INTERACTUAR"
                         activeItem.id == ShineCTOLocation.MARKER_ID  -> "PRESIONA X PARA INSPECCIONAR"
-                        activeItem.id.startsWith("escom_door_")      -> "PRESIONA X PARA ENTRAR" // <--- Aquí aparece el texto de la puerta
+                        activeItem.id.startsWith("escom_door_") || activeItem.id.startsWith("voca_door_") -> "PRESIONA X PARA ENTRAR"
                         else -> "PRESIONA X PARA RECOGER"
                     }
 
@@ -2089,7 +2096,8 @@ class WorldMapViewModel(
 
         if (itemToClaim.name == "Objeto Misterioso ESCOM" ||
             itemToClaim.id == ShineCTOLocation.MARKER_ID ||
-            itemToClaim.id.startsWith("escom_door_")) {
+            itemToClaim.id.startsWith("escom_door_") ||
+            itemToClaim.id.startsWith("voca_door_")) {
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -2550,8 +2558,21 @@ class WorldMapViewModel(
                     )
                 }
             }
+            nearby.id.startsWith("voca_door_") -> {
+                _uiState.update {
+                    it.copy(
+                        showEscomDoorFade = true,
+                        pendingInteriorDestination = InteriorBuilding.VOCA9
+                    )
+                }
+            }
             nearby.id.startsWith("escom_door_") -> {
-                _uiState.update { it.copy(showEscomDoorFade = true) }
+                _uiState.update {
+                    it.copy(
+                        showEscomDoorFade = true,
+                        pendingInteriorDestination = null // Default to lobby (ESCOM)
+                    )
+                }
             }
             nearby.id == ShineCTOLocation.MARKER_ID -> {
                 _uiState.update { it.copy(showShineCTODiscovery = true) }

@@ -219,18 +219,14 @@ fun WorldMapScreen(
     }
 
     // Cuando el video de carga termina y hay un destino pendiente, navegar.
-    // Si la interacción fue con la mano (pendingZombieMinigame), vamos al minijuego
-    // de zombis (que arranca en el lobby/croquis). Si no, al interior normal.
+    // Solo manejamos el caso de la mano zombi (video) aquí.
+    // Las puertas se manejan en MainActivity tras el fade.
     LaunchedEffect(uiState.showZombiVideo, uiState.pendingInteriorDestination) {
         val target = uiState.pendingInteriorDestination
-        if (target != null && !uiState.showZombiVideo) {
+        if (target != null && !uiState.showZombiVideo && viewModel.pendingZombieMinigame) {
             viewModel.clearPendingInteriorDestination()
-            if (viewModel.pendingZombieMinigame) {
-                viewModel.clearPendingZombieMinigame()
-                onNavigateToInterior("zombie_minigame")
-            } else {
-                onNavigateToInterior(target.routeName)
-            }
+            viewModel.clearPendingZombieMinigame()
+            onNavigateToInterior("zombie_minigame/${target.id}")
         }
     }
 
@@ -1056,6 +1052,7 @@ fun WorldMapScreen(
                                     OptionMenuGroup(
                                         id = "ir_a", label = "Ir a…", icon = Icons.Default.School,
                                         items = buildList {
+                                            add(OptionMenuItem("Puntos de Teletransporte", Icons.Default.LocationOn) { viewModel.toggleTeleportMenu(true) })
                                             add(OptionMenuItem("Ir a ESCOM", Icons.Default.School) { viewModel.teleportTo(19.5045, -99.1469) })
                                             add(OptionMenuItem("Ir a tu Ubicación (GPS)", Icons.Default.LocationOn, Color(0xFF2196F3)) {
                                                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {

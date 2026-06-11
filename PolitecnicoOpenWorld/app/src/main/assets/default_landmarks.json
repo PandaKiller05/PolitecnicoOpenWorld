@@ -70,5 +70,14 @@
     "name": "CECyT 9 Bátiz",
     "rotationAngle": 210.94089,
     "scaleFactor": 1.0837456
+  },
+  {
+    "assetPath": "DOORS/VOCA9_DOOR.png",
+    "id": 23,
+    "latitude": 19.453119000000093,
+    "longitude": -99.17552699999996,
+    "name": "Puerta Voca 9",
+    "rotationAngle": 36.043427,
+    "scaleFactor": 0.11
   }
 ]
