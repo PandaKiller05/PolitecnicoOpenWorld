@@ -278,6 +278,10 @@ class WorldMapViewModel(
     internal val ESCOM_BASE_LON = -99.14674
     internal val ESCOM_OFFSET = 0.001
 
+    internal val VOCA9_BASE_LAT = 19.45370
+    internal val VOCA9_BASE_LON = -99.17540
+    internal val VOCA9_OFFSET = 0.0008
+
     internal val ESCOM_DOOR_ASSET = "DOORS/ESCOM_DOOR.webp"
     internal val ESCOM_DOOR_INTERACT_RADIUS = 0.00020   // ~20 m
 
@@ -2320,35 +2324,52 @@ class WorldMapViewModel(
     }
 
     /**
-     * Spawnea UNA SOLA ZombiHand, pero SOLO si el jugador está dentro de ESCOM.
-     * Si no está en ESCOM, no hace nada (y deja la lista vacía).
+     * Spawnea items especiales (manos, puertas) según dónde esté el jugador.
      */
     fun spawnEscomItems(roadNetwork: List<MapWay>, cantidad: Int = 1) {
         val center = _uiState.value.currentLocation ?: return
 
-        // ── GUARDA CLAVE: nada de manos fuera de ESCOM ──
-        if (!isInsideEscom(center.latitude, center.longitude)) {
+        val inEscom = isInsideEscom(center.latitude, center.longitude)
+        val inV9 = isInsideVoca9(center.latitude, center.longitude)
+
+        // Si no está en ninguna zona especial, limpiar todo
+        if (!inEscom && !inV9) {
             _escomItems.value = emptyList()
             _uiState.update { it.copy(isZombieHandSpawned = false) }
             return
         }
 
-        // Evita duplicar si ya hay una mano spawneada
+        // Si ya están puestos los items, no hacer nada
         if (_uiState.value.isZombieHandSpawned && _escomItems.value.isNotEmpty()) return
 
-        // Mano zombi desactivada del exterior — el acceso al lobby
-        // ahora se realiza únicamente por las puertas físicas (ESCOM_DOOR).
-        val globalZombieHand = ovh.gabrielhuav.pow.domain.models.ActiveCollectible(
-            id = "global_zombie_hand",
-            name = "Mano del Apocalipsis",
-            description = "Activa el apocalipsis global.",
-            assetPath = "ZOMBIS_MOD/zombi_hand.webp",
-            latitude = 19.50456,
-            longitude = -99.14674
-        )
-        _escomItems.value = listOf(globalZombieHand)
+        val items = mutableListOf<ActiveCollectible>()
+
+        if (inEscom) {
+            // Puerta de ESCOM
+            items.add(ActiveCollectible(
+                id = "escom_door_main",
+                name = "Entrada Principal ESCOM",
+                description = "door",
+                assetPath = ESCOM_DOOR_ASSET,
+                latitude = 19.50456,
+                longitude = -99.14674
+            ))
+        }
+
+        if (inV9) {
+            // Puerta de la Voca 9
+            items.add(ActiveCollectible(
+                id = "voca_door_principal",
+                name = "Entrada Principal Voca 9",
+                description = "door",
+                assetPath = ESCOM_DOOR_ASSET,
+                latitude = VOCA9_BASE_LAT,
+                longitude = VOCA9_BASE_LON
+            ))
+        }
+
+        _escomItems.value = items
         _uiState.update { it.copy(isZombieHandSpawned = true) }
-        return
     }
 
     fun collectEscomItem() {
@@ -2520,6 +2541,11 @@ class WorldMapViewModel(
     private fun isInsideEscom(lat: Double, lon: Double): Boolean {
         return abs(lat - ESCOM_BASE_LAT) < ESCOM_OFFSET &&
                 abs(lon - ESCOM_BASE_LON) < ESCOM_OFFSET
+    }
+
+    private fun isInsideVoca9(lat: Double, lon: Double): Boolean {
+        return abs(lat - VOCA9_BASE_LAT) < VOCA9_OFFSET &&
+                abs(lon - VOCA9_BASE_LON) < VOCA9_OFFSET
     }
 
 
