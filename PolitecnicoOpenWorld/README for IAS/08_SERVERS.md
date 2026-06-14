@@ -133,6 +133,15 @@ BUILDING_ORDER=[...7 edificios...]   EFFECTS=[...6 SkillEffect...]
 > Las matrices por defecto son **border-only** y deben coincidir filas/cols con las del cliente
 > (`ZombieRoomCatalog`) hasta reemplazarse por `collision_matrices.json` (cargado con
 > `loadMatrixOverrides`). / Default matrices are border-only and must match client rows/cols.
+>
+> **🆕 Campus FES (`FES_ID='fes_interior'` + `fes_edificio`):** `ROOMS` incluye el campus de FES Aragón:
+> el **lobby `fes_interior`** (tipo `LOBBY`, zona segura, sólo relay — `ensureRoomState` no siembra zombis
+> en `LOBBY`) y el **edificio `fes_edificio`** (tipo `BUILDING`, `zombieCount=4` → el server SÍ siembra
+> zombis autoritativos). Deben coincidir con `ZombieRoomCatalog` del cliente (ids, tipos, matrices
+> border-only). **Patrón expandible:** para añadir UAM, replica estas dos líneas con ids `uam_*`. El
+> servidor del **mundo abierto** (`Multiplayer/`) **no cambia** con esto: la transición open-world→interior
+> la maneja el cliente (VM Activity-scoped mantiene conexión y coordenadas; el back stack preserva
+> `world_map`), así que al salir del interior vuelves al mismo punto.
 
 ### IA de zombis v2 / zombie AI v2
 

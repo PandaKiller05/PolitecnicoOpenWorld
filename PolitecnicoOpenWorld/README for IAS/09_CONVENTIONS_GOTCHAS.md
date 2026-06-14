@@ -340,6 +340,32 @@ matrices por defecto son **border-only** hasta reemplazarse.
   asset es un STRING (literal o `"$folder/..."`); un rename mal hecho falla en RUNTIME, no al compilar —
   verifica que cada literal resuelva a un archivo existente.
 
+- **Menú: "MUNDO LIBRE" vs "MODO HISTORIA" + spawn de campaña:** el 1er botón del menú
+  (`menu_start_game` = **MUNDO LIBRE**) es el open world sin campaña (spawn por defecto, ESCOM).
+  El 2º (`menu_load_game` = **MODO HISTORIA**) navega a `story_mode` (`StoryModeScreen`): prólogo +
+  selector de escuela (`SchoolCatalog`, solo ESCOM `available=true`) + "CARGAR PARTIDA". "COMENZAR"
+  pasa por la **intro** `story_intro/{schoolId}` (`StoryIntroScreen`, "Listo para Iniciar", placeholder);
+  al **INICIAR**, `MainActivity` **guarda** la partida (`CampaignRepository.saveCampaign`) y arranca el
+  mundo. "CARGAR PARTIDA" se habilita solo si `CampaignRepository.hasSave()` y reanuda en la escuela
+  guardada (sin re-guardar). El **guardado lo escribe `MainActivity`** (punto de DI), no las Views.
+  Para el spawn usa `WorldMapViewModel.setStorySpawn(lat, lon)` — **NO `updateInitialLocation`**: está
+  gateada por `isLoadingLocation` (ya consumida en `onCreate`), así que no movería el spawn.
+  `setStorySpawn` es miembro sin gemelo de extensión y re-arma `isMapReady`/`isRoadNetworkReady`/
+  `npcsWarmedUp`. Para habilitar FES Aragón/UAM: pon `available=true` en `SchoolCatalog` (sus coords ya
+  alimentan el spawn). `StoryModeViewModel` usa `Factory(context)` para leer la partida (NavBackStackEntry
+  → re-lee al entrar). Las pantallas de campaña usan `windowInsetsPadding(WindowInsets.systemBars)`.
+- **Interiores expandible por campus (NO hardcodear el lobby de ESCOM):** el motor de Interiores
+  (`interiores.zombies`) sirve para cualquier campus. Salas nuevas vía `ZombieRoomCatalog.campusRooms(...)`
+  (`addAll` por campus; ESCOM = anillo bespoke, no lo toques). La sala inicial la elige la ruta
+  **`interiores_zombies?startRoom={id}`** → `ZombieGameViewModel.startRoomId`. El VM debe ser
+  **campus-agnóstico**: usa `lobbyForBuilding(buildingId)` (no `roomById(LOBBY_ID)`) para spawn de retorno,
+  respawn de WASTED y el diálogo "volver al lobby" (`pendingLobbyTarget`). **Cliente y servidor de
+  Interiores deben coincidir** en ids/tipos/matrices (`ROOMS` en `MultiplayerInteriores/server.js`:
+  LOBBY = relay sin zombis, BUILDING = `ensureRoomState` siembra). La **mano/activación de zombis** del
+  lobby sigue gateada por `LOBBY_ID` (sólo ESCOM): offline los edificios sólo siembran zombis con el modo
+  activado; FES tiene horda **online** (el server siembra en BUILDING). La transición open-world↔interior
+  **no** toca `Multiplayer/server.js`: el `WorldMapViewModel` (Activity-scoped) + el back stack preservan
+  conexión y coordenadas.
 - **i18n / internacionalización (strings.xml + cambio de idioma):** los textos de UI se externalizan a
   recursos. **Base = español** en `res/values/strings.xml`; **inglés** en `res/values-en/strings.xml`
   (paridad 1:1 de claves). Para añadir un idioma (p. ej. ruso) basta con crear `res/values-ru/strings.xml`

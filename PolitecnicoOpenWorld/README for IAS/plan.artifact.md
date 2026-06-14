@@ -83,6 +83,8 @@ via co-located `ViewModelProvider.Factory` instances.
 | Zombie net models (client) | `features/interiores/zombies/viewmodel/Zombienetmodels.kt` |
 | Zombie rendering + camera + damage FX | `features/interiores/zombies/ui/ZombieGameScreen.kt` |
 | ESCOM simple interiors + metro (was `interior`) | `features/interiores/escom/{ui,viewmodel}/` |
+| Door → interior entry (generic, `DOORS/` landmarks) | `WorldMapViewModel.checkCollectibleProximity` (detect) + `handleInteraction` (route by door name) + `WorldMapDesigner` (door backfill/relocate). **FES door → `interiores_zombies?startRoom=fes_interior`**; start room threaded via `ZombieGameViewModel.startRoomId`. Unused-now FES simple interior: `FesInteriorScreen.kt`, route `interior_fes` |
+| Interiors expandable per campus (ESCOM/FES/UAM) | `ZombieRoomCatalog.campusRooms(...)`+`BuildingSpec` (lobby+buildings, doors wired; ESCOM = bespoke ring). FES: `fes_interior` LOBBY + `fes_edificio` BUILDING (client) ↔ `ROOMS` in `MultiplayerInteriores/server.js`. Campus-agnostic VM: `lobbyForBuilding(id)`, `pendingLobbyTarget` (replaced hardcoded `LOBBY_ID`) |
 | ShineCTO easter egg (was `shinecto`) | `features/interiores/shinecto/{ui,viewmodel}/` |
 | Zombie rooms / doors / collision | `domain/models/zombie/ZombieModels.kt`, `ZombieRoomCatalog.kt` |
 | Zombie collision-matrix persistence | `data/repository/CollisionMatrixRepository.kt` (`collision_matrices.json`) |
@@ -91,6 +93,7 @@ via co-located `ViewModelProvider.Factory` instances.
 | Tile cache (Room) | `data/cache/TileCache.kt` + `data/local/room/dao/MapTileDao.kt` |
 | Road-network cache (Room) | `data/cache/RoadNetworkCache.kt` + `RoadNetworkDao.kt` |
 | Multiplayer warm-up (Render) | `features/main_menu/ui/ServerWarmupManager.kt` (package `data.network`) |
+| Story Mode / campaign (prologue + school picker + intro + save/load) | `features/main_menu/ui/StoryModeScreen.kt` + `StoryIntroScreen.kt` + `features/main_menu/viewmodel/StoryModeViewModel.kt` (routes `story_mode`, `story_intro/{schoolId}`); schools in `domain/models/SchoolCatalog.kt`; save in `data/repository/CampaignRepository.kt` (written by `MainActivity`); spawn via `WorldMapViewModel.setStorySpawn` |
 | **Unified offline tile cache (native OSM)** | `data/cache/RoomTileModuleProvider.kt` (osmdroid module → Room, browser UA) |
 | **Per-zone tile prefetch (offline, ~2km)** | `data/cache/TilePrefetchManager.kt` + `WorldMapRoadNetwork.kt::prefetchCurrentZoneTiles` |
 | **Open-world server (v2)** | `Multiplayer/server.js` |
@@ -350,7 +353,11 @@ routing; 6 ESCOM interiors; native OSM now offline-unified with the Web tile cac
 **player-anchored fog-of-war on native + web (driving-rotation safe)**; **real-meter NPC/player
 sizing unified across renderers**; **CDMX Metro station icons (`metro_cdmx/icon.webp`) at every
 `metro.json` station on all 3 renderers (native `Marker`, web `updateMetro`, Google `Marker`)**; **landscape-safe scrollable Options menu**; main-menu version
-bound to `BuildConfig.VERSION_NAME` with auto-shrinking title; full zombie survival minigame (lobby + 7 buildings,
+bound to `BuildConfig.VERSION_NAME` with auto-shrinking title; **Story Mode / campaign entry
+(menu buttons renamed to "FREE ROAM" + "STORY MODE"; `story_mode` screen with prologue + school
+picker — only ESCOM playable, FES Aragón/UAM disabled — an intro screen "Ready to Start"
+(`story_intro`), and a working save/load (`CampaignRepository`): START saves the campaign so LOAD GAME
+resumes; campaign spawn via `setStorySpawn`)**; full zombie survival minigame (lobby + 7 buildings,
 dual combat, 6 power-ups, dynamic lighting, WASTED/Victory screens, damage feedback
 FX) with **online mode backed by a dedicated authoritative zombie server**
 (`MultiplayerZombie/`: flow-field + LOS + separation AI) and a collision Designer

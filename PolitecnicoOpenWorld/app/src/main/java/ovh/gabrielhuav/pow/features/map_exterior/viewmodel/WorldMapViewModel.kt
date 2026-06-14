@@ -1327,6 +1327,26 @@ class WorldMapViewModel(
         }
     }
 
+    // MODO HISTORIA: fija la escuela de inicio elegida en el menú de campaña.
+    // A diferencia de [updateInitialLocation] (gateada por isLoadingLocation, ya
+    // consumida en MainActivity.onCreate), esto FUERZA el punto de aparición y
+    // re-arma las compuertas de carga para que el mapa y las calles se descarguen
+    // alrededor de la escuela elegida. Se llama ANTES de navegar al mapa, cuando el
+    // mundo aún no está cargado.
+    fun setStorySpawn(lat: Double, lon: Double) {
+        val loc = GeoPoint(lat, lon)
+        _uiState.update {
+            it.copy(
+                currentLocation = loc,
+                isLoadingLocation = false,
+                isMapReady = false,        // ← re-activa la compuerta de carga del mapa
+                isRoadNetworkReady = false, // ← y la de la red de calles
+                npcsWarmedUp = false        // ← y el warm-up de NPCs (orden: tiles → calles → NPCs)
+            )
+        }
+        checkPrankedySpawn(loc)
+    }
+
     fun updateActionState(action: GameAction, isPressed: Boolean) {
         when (action) {
             GameAction.A -> {
@@ -1556,7 +1576,8 @@ class WorldMapViewModel(
                 isFirstTimeBoarded = _uiState.value.vehicleIsFirstTimeBoarded,
                 // Si te bajas de una PATRULLA robada, el coche que queda conserva el skin de
                 // patrulla (sigue siendo tipo CAR para que la IA lo conduzca como tráfico).
-                isPoliceSkin = _uiState.value.isDrivingPoliceCar
+                isPoliceSkin = _uiState.value.isDrivingPoliceCar,
+                navState = if (isInsideEscom(loc.latitude, loc.longitude)) ovh.gabrielhuav.pow.domain.models.NpcNavState.PARKED else ovh.gabrielhuav.pow.domain.models.NpcNavState.MACRO_OSM
             )
             remoteEntities[abandonedCar.id] = abandonedCar
             _uiState.update { it.copy(isDriving = false, currentVehicleModel = null, currentVehicleColor = null, vehicleSpeed = 0.0, vehicleIsFirstTimeBoarded = true, isDrivingPoliceCar = false) }
@@ -2462,13 +2483,25 @@ class WorldMapViewModel(
                 }
             }
             nearby.id.startsWith("escom_door_") -> {
-                val targetRoute = when (nearby.name) {
-                    "Entrada Campo Béisbol" -> "interior_deportivo_beis"
-                    "Entrada Campo Fútbol" -> "interior_deportivo_futbol"
+                // Enrutamos la puerta a su interior por el NOMBRE del landmark. Usamos
+                // `contains` (no match exacto) para tolerar variantes/acentos/espacios al
+                // colocar la puerta en el Diseñador: si el nombre no casa EXACTO, antes la
+                // puerta caía al `else` y mandaba al minijuego zombi por error. Las puertas
+                // ESCOM (p. ej. "Puerta Norte/Sur ESCOM") siguen yendo al minijuego por el else.
+                val n = nearby.name
+                val targetRoute = when {
+                    n.contains("Béisbol", ignoreCase = true) || n.contains("Beisbol", ignoreCase = true) -> "interior_deportivo_beis"
+                    n.contains("Fútbol", ignoreCase = true) || n.contains("Futbol", ignoreCase = true) -> "interior_deportivo_futbol"
+                    // FES Aragón usa el MOTOR DE INTERIORES (mismos controles, opciones, botones
+                    // de acción y HUD ZONA/vida/MODO) pero arranca en SU PROPIA sala "fes_interior"
+                    // (no el lobby de ESCOM): el arg startRoom selecciona la sala del catálogo.
+                    n.contains("FES", ignoreCase = true) -> "interiores_zombies?startRoom=fes_interior"
+                    // Puertas ESCOM (Norte/Sur, etc.) → lobby de ESCOM (sin arg = default).
                     else -> "interiores_zombies"
                 }
                 _uiState.update { it.copy(showEscomDoorFade = true, pendingDoorDestination = targetRoute) }
             }
+
             nearby.id == ShineCTOLocation.MARKER_ID -> {
                 _uiState.update { it.copy(showShineCTODiscovery = true) }
             }

@@ -74,13 +74,16 @@ app/src/main/java/ovh/gabrielhuav/pow/
 | Ruta / Route | Pantalla / Screen |
 |---|---|
 | `main_menu` | `MainMenuScreen` |
+| `story_mode` | `StoryModeScreen` (Modo Historia / Campaña: prólogo + elegir escuela + cargar partida) |
+| `story_intro/{schoolId}` | `StoryIntroScreen` ("Listo para Iniciar"; placeholder narrativo, guarda partida al INICIAR) |
 | `settings` | `SettingsScreen` |
 | `world_map` | `WorldMapScreen` (open world) |
 | `collectibles` | `CollectiblesScreen` |
 | `interior_auditorio` … `interior_canchas_futbol` | 7 interiores ESCOM (`InteriorScreenBase`, paquete `interiores.escom.ui`) |
 | `interior_deportivo_beis`, `interior_deportivo_futbol` | Interiores deportivos (`interiores.escom.ui`) |
+| `interior_fes` | Interior FES Aragón simple (`FesInteriorScreen`, `interiores.escom.ui`). **Existe pero la puerta YA NO lo usa**: la puerta "Entrada FES Aragón" entra al motor de Interiores en su sala propia (`interiores_zombies?startRoom=fes_interior`). Reservado. |
 | `metro_station_interior/{stationName}?spawnX={spawnX}&spawnY={spawnY}` | `MetroStationInteriorScreen` (`interiores.escom.ui`, ruta parametrizada) |
-| `interiores_zombies` | `ZombieGameScreen` (`interiores.zombies.ui`; ruta antes llamada `zombie_minigame`) |
+| `interiores_zombies?startRoom={startRoom}` | `ZombieGameScreen` (motor de Interiores; `startRoom` = sala inicial, default `lobby_campus`; la puerta FES pasa `fes_interior`) |
 | `shinecto_interior` | `ShineCTOScreen` (`interiores.shinecto.ui`, easter egg) |
 
 **MainActivity** también: configura osmdroid (`configureOsmdroid`), pide permisos y obtiene la
