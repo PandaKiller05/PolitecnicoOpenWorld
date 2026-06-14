@@ -134,13 +134,13 @@ object ZombieRoomCatalog {
             )
         )
         v9BuildingOrder.forEach { id ->
-            // SELECCIÓN REALISTA: Usamos fotos del Casco de Santo Tomás y zonas aledañas
+            // SELECCIÓN REALISTA CORREGIDA: Nombres exactos de los archivos en assets
             val placeholderAsset = when(id) {
-                "v9_edificio_a" -> "LUGARES/shineCTO/s_pbaja.webp"         // Pasillo moderno
-                "v9_edificio_b" -> "LUGARES/shineCTO/s_paltas.webp"        // Planta alta con mesas
-                "v9_pesados"    -> "ZOMBIS_MOD/interiores/za_estacionamiento.webp" // Estilo industrial/talleres
-                "v9_gimnasio"   -> "LUGARES/deportivomiguelaleman/deportivo_miguelaleman.webp" // Zona deportiva Casco
-                "v9_cafeteria"  -> "LUGARES/shineCTO/s_bebidas.webp"       // Barra de café/alimentos
+                "v9_edificio_a" -> "LUGARES/shineCTO/s_pbaja.webp"
+                "v9_edificio_b" -> "LUGARES/shineCTO/s_palta.webp"        // Corregido: era s_palta, no s_paltas
+                "v9_pesados"    -> "ZOMBIS_MOD/interiores/za_estacionamiento.webp"
+                "v9_gimnasio"   -> "LUGARES/deportivomiguelaleman/deportivo_miguelaleman.webp"
+                "v9_cafeteria"  -> "LUGARES/shineCTO/s_bebidas.webp"
                 else            -> "ZOMBIS_MOD/interiores/za_palapas.webp"
             }
             
