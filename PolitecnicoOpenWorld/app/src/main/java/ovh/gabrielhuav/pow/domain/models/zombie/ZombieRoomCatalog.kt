@@ -12,12 +12,11 @@ object ZombieRoomCatalog {
         "za_edificio", "za_estacionamiento", "za_palapas", "za_canchas_futbol"
     )
 
+    // Ajustado a las fotos que tienes en tus capturas:
     private val v9BuildingOrder = listOf(
-        "v9_edificio_a", "v9_edificio_b", "v9_pesados", "v9_gimnasio", "v9_cafeteria"
+        "v9_edificio_a", "v9a_cafeteria", "v9a_gimnasio"
     )
 
-    // ─── MATRICES DE COLISIÓN POR DEFECTO ─────────────────────────────────────
-    // ... (comentarios omitidos para brevedad en la respuesta, pero se mantienen en el archivo)
     val BUILDING_MATRIX = CollisionMatrix(borderOnly(cols = 30, rows = 20))
     val LOBBY_MATRIX = CollisionMatrix(borderOnly(cols = 30, rows = 30))
 
@@ -44,10 +43,8 @@ object ZombieRoomCatalog {
 
     private val v9LobbyDoors = listOf(
         ZoneDoor(NormRect(0.10f, 0.10f, 0.25f, 0.25f), "v9_edificio_a", "Edificio A", DoorKind.TO_BUILDING),
-        ZoneDoor(NormRect(0.30f, 0.10f, 0.45f, 0.25f), "v9_edificio_b", "Edificio B", DoorKind.TO_BUILDING),
-        ZoneDoor(NormRect(0.10f, 0.40f, 0.25f, 0.55f), "v9_pesados", "Talleres Pesados", DoorKind.TO_BUILDING),
-        ZoneDoor(NormRect(0.30f, 0.40f, 0.45f, 0.55f), "v9_gimnasio", "Gimnasio", DoorKind.TO_BUILDING),
-        ZoneDoor(NormRect(0.50f, 0.40f, 0.65f, 0.55f), "v9_cafeteria", "Cafetería V9", DoorKind.TO_BUILDING),
+        ZoneDoor(NormRect(0.30f, 0.10f, 0.45f, 0.25f), "v9a_cafeteria", "Cafetería V9", DoorKind.TO_BUILDING),
+        ZoneDoor(NormRect(0.10f, 0.40f, 0.25f, 0.55f), "v9a_gimnasio", "Gimnasio", DoorKind.TO_BUILDING),
         ZoneDoor(NormRect(0.40f, 0.80f, 0.60f, 0.95f), EXIT_TO_WORLD, "Regresar a la calle", DoorKind.TO_WORLD)
     )
 
@@ -66,10 +63,8 @@ object ZombieRoomCatalog {
     private fun buildingDisplayName(id: String) = when (id) {
         "voca9" -> "Plaza Principal V9"
         "v9_edificio_a" -> "Edificio A"
-        "v9_edificio_b" -> "Edificio B"
-        "v9_pesados" -> "Talleres Pesados"
-        "v9_gimnasio" -> "Gimnasio"
-        "v9_cafeteria" -> "Cafetería V9"
+        "v9a_cafeteria" -> "Cafetería V9"
+        "v9a_gimnasio" -> "Gimnasio"
         "za_auditorio" -> "Auditorio"
         "za_biblioteca" -> "Biblioteca"
         "za_cafeteria" -> "Cafetería ESCOM"
@@ -123,8 +118,8 @@ object ZombieRoomCatalog {
                 type = ZoneType.LOBBY,
                 backgroundAsset = "BUILDINGS/IPN/building_voca9.webp",
                 displayName = "Plaza Lázaro Cárdenas - V9",
-                worldWidth = 1920f,
-                worldHeight = 1080f,
+                worldWidth = 1460f,
+                worldHeight = 1600f,
                 zoom = 2.0f,
                 playerSpawnFrac = NormPoint(0.50f, 0.80f),
                 doors = v9LobbyDoors,
@@ -134,21 +129,11 @@ object ZombieRoomCatalog {
             )
         )
         v9BuildingOrder.forEach { id ->
-            // SELECCIÓN REALISTA CORREGIDA: Nombres exactos de los archivos en assets
-            val placeholderAsset = when(id) {
-                "v9_edificio_a" -> "LUGARES/shineCTO/s_pbaja.webp"
-                "v9_edificio_b" -> "LUGARES/shineCTO/s_palta.webp"        // Corregido: era s_palta, no s_paltas
-                "v9_pesados"    -> "ZOMBIS_MOD/interiores/za_estacionamiento.webp"
-                "v9_gimnasio"   -> "LUGARES/deportivomiguelaleman/deportivo_miguelaleman.webp"
-                "v9_cafeteria"  -> "LUGARES/shineCTO/s_bebidas.webp"
-                else            -> "ZOMBIS_MOD/interiores/za_palapas.webp"
-            }
-            
             add(
                 ZombieRoom(
                     id = id,
                     type = ZoneType.BUILDING,
-                    backgroundAsset = placeholderAsset,
+                    backgroundAsset = "ZOMBIS_MOD/interiores/$id.webp",
                     displayName = buildingDisplayName(id),
                     worldWidth = 1920f,
                     worldHeight = 1080f,
