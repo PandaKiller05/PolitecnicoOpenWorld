@@ -21,6 +21,93 @@ Successful pings cached for 60 s.
 
 ### `ui/MainMenuScreen.kt`
 Menú principal; título ligado a `BuildConfig.VERSION_NAME` con auto-shrink que nunca parte de línea.
+**Botones (renombrados):** `menu_start_game` ahora es **"MUNDO LIBRE"** (open world sin campaña, spawn por
+defecto) y `menu_load_game` es **"MODO HISTORIA"** (antes deshabilitado; ahora navega a `story_mode` vía
+`onNavigateToStory`).
+
+---
+
+## Modo Historia / Campaña (`features/main_menu/`)
+
+**ES:** Pantalla de campaña accesible desde **"MODO HISTORIA"** (ruta `story_mode`). Muestra el **prólogo**
+(brote del Politécnico: Prankedy crea por accidente una sustancia corrosiva en la ENCB), un **selector de
+escuela** y **"CARGAR PARTIDA"** (habilitado solo si hay una partida guardada). "COMENZAR" pasa por la
+**intro** (`story_intro/{schoolId}`, "Listo para Iniciar") antes de entrar al mundo.
+**EN:** Campaign screen from **"STORY MODE"** (`story_mode`): prologue + school picker + **"LOAD GAME"**
+(enabled only if a save exists). "START" goes through the **intro** (`story_intro/{schoolId}`) first.
+
+### `viewmodel/StoryModeViewModel.kt` + `StoryModeState.kt`
+- Alcance **NavBackStackEntry** (se instancia con `viewModel(factory = Factory(context))`, así re-lee el
+  guardado cada vez que se entra). `StoryModeState`: `selectedSchoolId` + `hasSave`/`savedSchoolId`/`savedAt`.
+- API: `selectSchool(id)` (ignora escuelas no disponibles), `selectedSchool()`, `savedSchool(): CampaignSchool?`.
+- Lee la partida de **`data/repository/CampaignRepository.kt`** (SharedPreferences `pow_campaign`:
+  `saveCampaign(schoolId)`/`hasSave`/`getSavedSchoolId`/`getSavedAt`/`clearCampaign`).
+
+### 🆕 Sistema de guardado COMPLETO en JSON con SLOTS — `data/repository/SaveGameRepository.kt`
+**ES:** `CampaignRepository` (prefs) solo dice QUÉ escuela. El **estado completo** se guarda en **JSON con
+hasta `SLOT_COUNT`=5 SLOTS** (`filesDir/pow_campaign_save_<n>.json`):
+`GameSaveData(schoolId, lat, lon, health, wantedLevel, isDriving, isDrivingPoliceCar, vehicleModel,
+vehicleColor, skin, nearbyNpcs: List<SavedNpc>, objectiveId, objectiveDone, savedAt)`. API del repo:
+`save(slot,data)`, `load(slot)`, `hasSave(slot)`, `anySave()`, `firstEmptySlot()`, `summaries(): List<SaveSlotSummary>`, `clear(slot)`.
+- **Selector de slots:** `features/main_menu/ui/SaveSlotsDialog.kt` (`SaveSlotsMode.LOAD`/`SAVE`) muestra los 5
+  slots con escuela + fecha. Lo hospeda **`MainActivity`** a nivel de Activity (un diálogo de GUARDAR común a
+  mapa e interiores; otro de CARGAR en `story_mode`).
+- **Guardado MANUAL** desde el ítem **"Guardar partida"** — disponible en el menú de Opciones del **mapa
+  global Y en interiores** (`ZombieGameScreen`); ambos llaman `onRequestSaveGame` → abre el selector y eliges
+  slot. **AUTO-GUARDADO** al salir/cerrar escribe en el **slot activo** (`campaignSlot`), solo si `inCampaign`.
+- **API del VM (extensiones en `viewmodel/WorldMapSaveGame.kt`):** `saveGame(context, slot)`,
+  `loadGame(context, slot): Boolean`, `buildSaveData(schoolId)`, `restoreSaveData(data)`,
+  `setCampaignObjective(obj)`, `checkObjectiveProgress(loc)`. Campos del VM: `campaignSchoolId`, `inCampaign`,
+  `campaignSlot` (los fija `MainActivity`).
+- **"COMENZAR"** ocupa el **primer slot vacío** (no pisa otras partidas), fija el objetivo de la Misión 1 y
+  spawnea en ESCOM. **"CARGAR PARTIDA"** abre el selector de slots y restaura el estado completo del slot
+  elegido (posición/vida/buscado/vehículo/skin/objetivo + NPCs cercanos).
+
+### 🆕 Intro como CÓMIC + Objetivos (Misión 1) 
+**ES:** `StoryIntroScreen` ahora es un **visor de cómic**: muestra los 8 paneles de `StoryComicCatalog`
+(`assets/STORY/INTRO/IntroPOW1..8.webp`, imágenes **HORIZONTALES** → la pantalla **fuerza orientación
+landscape** mientras dura la intro vía `requestedOrientation` y la restaura al salir; `MainActivity` declara
+`configChanges` para que el giro no recree la Activity). Tienen un **recuadro blanco** donde el código dibuja
+el `text` de cada panel. Navegas tocando la mitad derecha (siguiente) / izquierda (anterior); **"Saltar"** salta toda la intro;
+en el último panel, tocar → **INICIAR** (guarda + spawn ESCOM + carga de assets). Si una imagen falta, se
+muestra un panel oscuro con el texto (no crashea).
+- **🆕 Editor in-game del cuadro de texto:** como el recuadro blanco está a distinta altura por panel, el botón
+  **"Editar"** activa un editor para **mover** (arrastrar o Subir/Bajar), **redimensionar** (Alto ±) y cambiar
+  el **tamaño de letra** (Letra ±) del cuadro, **por panel**. Se persiste en
+  **`data/repository/StoryLayoutRepository.kt`** (`StoryBoxLayout(topFrac, heightFrac, fontSp)` en
+  SharedPreferences `pow_story_layout`); "Guardar" guarda ese panel, "Todas" aplica a todos. También ajusta
+  el **ancho** (`Ancho ±`, `boxWidthFrac`) — el cuadro va centrado. Los defaults viven en `ComicPanel`
+  (`boxTopFrac/boxHeightFrac/boxWidthFrac/fontSp`). **⚠️ El ajuste se guarda SOLO en el dispositivo**
+  (SharedPreferences), no en el repo: por eso hay un botón **"Exportar"** que vuelca TODOS los paneles a un
+  **JSON** (vía selector de archivo) y además escribe en **Logcat** (tag `STORY_LAYOUT`) las líneas
+  `ComicPanel(...)` listas para PEGAR como defaults en `StoryComicCatalog.kt` (así la config queda en el código).
+- **Objetivos:** `domain/models/CampaignMission.kt` (`CampaignObjective`, `MissionCatalog.first = ir_encb`,
+  "Ve a la ENCB"). Al COMENZAR se fija el objetivo; el **game loop** (`checkObjectiveProgress`, solo si
+  `inCampaign`) lo marca cumplido al entrar en `arriveRadiusMeters` del destino. **Widget de Objetivos
+  SIEMPRE visible** (`ui/components/ObjectivesWidget.kt`, HUD arriba-izquierda con título + distancia). El
+  objetivo se guarda/restaura en `GameSaveData`. ⚠️ Las coords de la ENCB en `MissionCatalog` son aproximadas.
+
+### `ui/StoryModeScreen.kt` + `ui/StoryIntroScreen.kt`
+- `StoryModeScreen`: prólogo + tarjetas de escuela (`SchoolCard`) + "CARGAR PARTIDA" (on solo con guardado;
+  reanuda en la escuela guardada vía `onLoadCampaign`) + "COMENZAR" (`onStartCampaign` → navega a la intro) +
+  "VOLVER". Usa `windowInsetsPadding(WindowInsets.systemBars)` para no chocar con la barra de navegación.
+- `StoryIntroScreen` ("Listo para Iniciar"): **placeholder** narrativo (futuros banners/sprites del prólogo).
+  Al **INICIAR** (`onBegin`) `MainActivity` **guarda** la partida (`campaignRepository.saveCampaign(school.id)`),
+  fija el spawn (`setStorySpawn`) y navega a `world_map`. "CARGAR PARTIDA" hace lo mismo **sin** guardar de nuevo.
+- El guardado lo escribe **`MainActivity`** (punto de DI), no las Views. La partida ligera (escuela) va a
+  `CampaignRepository`; el **estado completo** (posición/vida/buscado/vehículo/skin/NPCs) va al JSON de
+  `SaveGameRepository` (ver "Sistema de guardado COMPLETO" arriba).
+
+### `domain/models/SchoolCatalog.kt`
+`CampaignSchool(id, displayName, latitude, longitude, available)` + `object SchoolCatalog.schools`.
+Solo **ESCOM** está `available = true` (= `TeleportCatalog.zones[0]`); **FES Aragón** y **UAM** quedan en
+desarrollo (`available = false`, deshabilitadas en la UI). `displayName` es nombre propio (no se traduce).
+
+### `WorldMapViewModel.setStorySpawn(lat, lon)` (miembro)
+Fuerza el punto de aparición de la campaña y re-arma las compuertas de carga
+(`isMapReady`/`isRoadNetworkReady`/`npcsWarmedUp = false`) para descargar el mundo alrededor de la escuela
+elegida. A diferencia de `updateInitialLocation` (gateada por `isLoadingLocation`, ya consumida en
+`MainActivity.onCreate`), **no** está gateada. Sin gemelo de extensión.
 
 ---
 
@@ -80,7 +167,12 @@ caché, FPS, **zoom** (nivel de zoom actual en vivo) y **velocímetro** (km/h al
 
 ---
 
-## ShineCTO easter egg (`features/shinecto/`)
+## ShineCTO easter egg (`features/interiores/shinecto/`)
+
+> **🆕 Reestructura:** antes `features/shinecto/`; ahora **`features/interiores/shinecto/`** (subpaquete de
+> la umbrella `interiores`). Usa `PlayerView`/`PlayerHealthBarFixed` desde **`interiores.core.ui`** (antes de
+> `zombie_minigame`). Su asset es `PLACES/shine_cto/` (antes `LUGARES/shineCTO/`). / Now under the `interiores`
+> umbrella; shared player views come from `interiores.core.ui`.
 
 **ES:** Interior easter-egg accesible al acercarse a `ShineCTOLocation` (lat 19.459049, lon -99.163251,
 `TRIGGER_RADIUS` 0.00015). Mini-juego social de bebidas.

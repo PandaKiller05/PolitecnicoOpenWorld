@@ -9,6 +9,8 @@ import ovh.gabrielhuav.pow.domain.models.Landmark
 import ovh.gabrielhuav.pow.features.map_exterior.ui.components.PlayerAction
 import ovh.gabrielhuav.pow.features.map_exterior.ui.components.PlayerSkin
 import ovh.gabrielhuav.pow.features.settings.models.ControlType
+import ovh.gabrielhuav.pow.domain.models.ai.PrankedyAnimState
+import ovh.gabrielhuav.pow.domain.models.ai.PrankedyPhase
 
 const val ZOOM_LOADING = 18.0
 const val ZOOM_GAMEPLAY_OSM = 22.0  // Nivel de zoom para OSMDroid Nativo (máximo por defecto)
@@ -44,6 +46,14 @@ data class PoliceShot(
 
 enum class RoadSource { LOADING, LOCAL_DB, NETWORK }
 enum class TileSource  { LOCAL_OSM, LOCAL_CACHE, NETWORK }
+
+// Herramienta activa del EDITOR del Debug Interiores. Define qué geometría se dibuja
+// al capturar puntos caminando con el jugador:
+//   WALL    = barda (línea ROJA, bloquea el paso)
+//   BLOCK   = zona NO caminable (polígono ROJO translúcido, p. ej. un edificio)
+//   NAV_PED = camino peatonal (línea VERDE, por donde caminan los NPCs)
+//   NAV_CAR = camino de autos / estacionamiento (línea NARANJA)
+enum class DebugEditTool { NONE, WALL, BLOCK, NAV_PED, NAV_CAR }
 
 data class WorldMapState(
     val currentLocation: GeoPoint? = null,
@@ -91,6 +101,9 @@ data class WorldMapState(
     val vehicleSpeed: Double = 0.0,
     val vehicleRotation: Float = 0f,
     val vehicleIsFirstTimeBoarded: Boolean = true,
+    // ¿El jugador conduce una PATRULLA robada? → se dibuja con el asset de policía (skin)
+    // en vez de un auto normal. Se pone al abordar una POLICE_CAR y se limpia al bajarse.
+    val isDrivingPoliceCar: Boolean = false,
     val landmarks: List<Landmark> = emptyList(),
     val showTeleportMenu: Boolean = false,
 
@@ -141,11 +154,31 @@ data class WorldMapState(
     // Cuando está activado, se pintan los 6 marcadores fijos de los edificios
     // y el bounding box de ESCOM sobre el mapa, para ajustar coordenadas.
     val showInteriorDebugOverlay: Boolean = false,
+    // Colisiones del exterior (polígonos = zonas NO caminables, p. ej. el edificio ESCOM;
+    // walls = bardas). Se exponen para dibujarlas en el overlay de Debug Interiores.
+    val exteriorCollisions: ovh.gabrielhuav.pow.domain.models.ExteriorCollisionsConfig? = null,
 
     // NUEVAS VARIABLES PARA EL CREADOR DE RUTAS
     val routeDebugWaypoints: List<GeoPoint> = emptyList(), // Las "migas de pan"
     val isParkingSlotMode: Boolean = false,                // Flag del Checkbox
     val currentWayId: Int = 100,                           // ID del carril actual
+
+    // ─── EDITOR DEL DEBUG INTERIORES ─────────────────────────────────────────
+    // Permite EDITAR las líneas del overlay DIBUJANDO con el dedo en el mapa (estilo Paint):
+    // arrastras para una línea (WALL/NAV_*) o un rectángulo (BLOCK) y se "commitea" a la lista
+    // del color/tipo. Se dibujan en vivo (NativeOsmMap) y se exportan/importan a JSON
+    // (formato exterior_collisions + navPaths).
+    val debugEditTool: DebugEditTool = DebugEditTool.NONE,
+    val debugEditWalls: List<ovh.gabrielhuav.pow.domain.models.CollisionWall> = emptyList(),     // bardas ROJAS editadas
+    val debugEditBlocks: List<ovh.gabrielhuav.pow.domain.models.CollisionPolygon> = emptyList(), // zonas ROJAS editadas
+    val debugEditNavPed: List<List<GeoPoint>> = emptyList(),                               // caminos VERDES (peatonal)
+    val debugEditNavCar: List<List<GeoPoint>> = emptyList(),                               // caminos NARANJAS (autos)
+
+    // ─── MODO HISTORIA: objetivo de campaña + widget de Objetivos ────────────
+    // Objetivo activo (Misión 1 = ir a la ENCB). El widget de Objetivos lo muestra
+    // (título + distancia) siempre que haya uno. `objectiveDone` se marca al llegar.
+    val currentObjective: ovh.gabrielhuav.pow.domain.models.CampaignObjective? = null,
+    val objectiveDone: Boolean = false,
 
     // Easter Eggs y Opciones extra
     val showRoadNetwork: Boolean = true,
@@ -182,5 +215,25 @@ data class WorldMapState(
     val zonePrefetchActive: Boolean = false,
     val zonePrefetchProgress: Float = 0f,   // 0f..1f
     val zoneOfflineReady: Boolean = false,
-    val zoneOfflineWarning: Boolean = false
+    val zoneOfflineWarning: Boolean = false,
+
+    // ─── PRANKEDY (compañero / mercenario) ───────────────────────────────────
+    // Campos de RENDER: leídos por NativeOsmMap para dibujar al NPC en el mapa.
+    val prankedyEnabled: Boolean = false,            // toggle del menú Opciones (Activar Prankedy)
+    val prankedyLocation: GeoPoint? = null,
+    val prankedyAnimState: PrankedyAnimState = PrankedyAnimState.IDLE,
+    val prankedyFacingRight: Boolean = true,
+    val prankedyVisible: Boolean = false,          // false = en vehículo o phase DEAD
+    val prankedyHealth: Float = 80f,
+    val prankedyProjectileActive: Boolean = false,
+    val prankedyProjectileStart: GeoPoint? = null,
+    val prankedyProjectileTarget: GeoPoint? = null,
+    val prankedyProjectileProgress: Float = 0f,   // 0f..1f, fracción de vuelo
+    val prankedyPhase: PrankedyPhase = PrankedyPhase.NOT_HIRED,
+    // Campos de UI: modales, diálogo flotante, hint de interacción.
+    val prankedyNearby: Boolean = false,            // jugador en radio de interacción
+    val showPrankedyHireDialog: Boolean = false,    // muestra el modal de contratar
+    val prankedyIsHireable: Boolean = true,         // false = en penalización
+    val prankedyHireableInSeconds: Int = 0,         // countdown de penalización
+    val prankedyDialogue: String? = null            // texto de la burbuja flotante
 )
