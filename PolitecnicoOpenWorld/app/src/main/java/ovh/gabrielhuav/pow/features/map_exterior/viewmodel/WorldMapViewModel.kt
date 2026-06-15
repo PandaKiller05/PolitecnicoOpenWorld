@@ -2344,29 +2344,17 @@ class WorldMapViewModel(
 
         val items = mutableListOf<ActiveCollectible>()
 
-        if (inEscom) {
-            // Puerta de ESCOM
-            items.add(ActiveCollectible(
-                id = "escom_door_main",
-                name = "Entrada Principal ESCOM",
-                description = "door",
-                assetPath = ESCOM_DOOR_ASSET,
-                latitude = 19.50456,
-                longitude = -99.14674
-            ))
-        }
-
-        if (inV9) {
-            // Puerta de la Voca 9
-            items.add(ActiveCollectible(
-                id = "voca_door_principal",
-                name = "Entrada Principal Voca 9",
-                description = "door",
-                assetPath = ESCOM_DOOR_ASSET,
-                latitude = VOCA9_BASE_LAT,
-                longitude = VOCA9_BASE_LON
-            ))
-        }
+        // Mano zombi (siempre spawnea en la zona actual)
+        val handLat = if (inV9) 19.45360 else 19.50456
+        val handLon = if (inV9) -99.17540 else -99.14674
+        items.add(ActiveCollectible(
+            id = "zombie_hand_mystery",
+            name = "Objeto Misterioso ESCOM",
+            description = "zombie_hand",
+            assetPath = "ZOMBIS_MOD/zombi_hand.webp",
+            latitude = handLat,
+            longitude = handLon
+        ))
 
         _escomItems.value = items
         _uiState.update { it.copy(isZombieHandSpawned = true) }
@@ -2544,8 +2532,9 @@ class WorldMapViewModel(
     }
 
     private fun isInsideVoca9(lat: Double, lon: Double): Boolean {
-        return abs(lat - VOCA9_BASE_LAT) < VOCA9_OFFSET &&
-                abs(lon - VOCA9_BASE_LON) < VOCA9_OFFSET
+        // Coordenadas exactas del nuevo mapa para la Voca 9
+        return abs(lat - 19.453533) < 0.0015 &&
+               abs(lon - -99.175314) < 0.0015
     }
 
 

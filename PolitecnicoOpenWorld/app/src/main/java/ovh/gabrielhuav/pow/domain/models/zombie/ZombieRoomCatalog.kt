@@ -111,7 +111,6 @@ object ZombieRoomCatalog {
             )
         }
 
-        // --- VOCACIONAL 9 ---
         add(
             ZombieRoom(
                 id = V9_LOBBY_ID,
@@ -152,12 +151,18 @@ object ZombieRoomCatalog {
     fun roomById(id: String) = byId[id]
     fun indexOfRoom(id: String) = rooms.indexOfFirst { it.id == id }
 
+    fun getLobbyForRoom(roomId: String): String {
+        return if (v9BuildingOrder.contains(roomId) || roomId == V9_LOBBY_ID) V9_LOBBY_ID
+        else LOBBY_ID
+    }
+
     @Synchronized
     fun init(context: android.content.Context) {
         rooms.forEach { room ->
             if (room.initAttempted) return@forEach
             room.initAttempted = true
             try {
+                android.util.Log.d("ZombieRoomCatalog", "Iniciando sala: ${room.id} con asset: ${room.backgroundAsset}")
                 context.assets.open(room.backgroundAsset).use { inputStream ->
                     val options = android.graphics.BitmapFactory.Options().apply {
                         inJustDecodeBounds = true
@@ -167,12 +172,17 @@ object ZombieRoomCatalog {
                         room.worldWidth = options.outWidth.toFloat()
                         room.worldHeight = options.outHeight.toFloat()
                         room.dimensionsLoaded = true
+                        android.util.Log.d("ZombieRoomCatalog", "Resolución cargada: ${room.worldWidth}x${room.worldHeight}")
                     } else {
-                        android.util.Log.w("ZombieRoomCatalog", "Fondo ${room.backgroundAsset} devolvió dimensiones inválidas (W:${options.outWidth}, H:${options.outHeight}). Se usará fallback.")
+                        android.util.Log.w("ZombieRoomCatalog", "Fondo ${room.backgroundAsset} devolvió dimensiones inválidas. Usando fallback 1920x1080.")
+                        room.worldWidth = 1920f
+                        room.worldHeight = 1080f
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("ZombieRoomCatalog", "No se pudo leer la resolución del fondo ${room.backgroundAsset}. Se usará fallback.", e)
+                android.util.Log.e("ZombieRoomCatalog", "No se pudo leer la resolución del fondo ${room.backgroundAsset}. Usando fallback 1920x1080.", e)
+                room.worldWidth = 1920f
+                room.worldHeight = 1080f
             }
         }
     }

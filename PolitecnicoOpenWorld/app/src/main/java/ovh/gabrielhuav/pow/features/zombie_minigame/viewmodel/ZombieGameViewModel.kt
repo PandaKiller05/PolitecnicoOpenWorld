@@ -320,7 +320,8 @@ class ZombieGameViewModel(
     }
 
     internal fun spawnAtLobbyDoorFor(fromBuildingId: String): Pair<Float, Float>? {
-        val lobby = ZombieRoomCatalog.roomById(ZombieRoomCatalog.LOBBY_ID) ?: return null
+        val lobbyId = ZombieRoomCatalog.getLobbyForRoom(fromBuildingId)
+        val lobby = ZombieRoomCatalog.roomById(lobbyId) ?: return null
         val door = lobby.doors.firstOrNull { it.targetRoomId == fromBuildingId } ?: return null
         val hb = door.hitboxFrac.toWorldRect(lobby.worldWidth, lobby.worldHeight)
 
@@ -607,7 +608,8 @@ class ZombieGameViewModel(
             }
             lastRoomId = diedInRoom.id
             _state.update { it.copy(showWastedScreen = false, playerHealth = 100f) }
-            loadRoom(ZombieRoomCatalog.indexOfRoom(ZombieRoomCatalog.LOBBY_ID))
+            val lobbyId = ZombieRoomCatalog.getLobbyForRoom(diedInRoom.id)
+            loadRoom(ZombieRoomCatalog.indexOfRoom(lobbyId))
         }
     }
 
@@ -629,7 +631,8 @@ class ZombieGameViewModel(
             return
         }
         // 2b. Mano zombi en lobby
-        if (currentRoom().id == ZombieRoomCatalog.LOBBY_ID) {
+        val currentRoomId = currentRoom().id
+        if (currentRoomId == ZombieRoomCatalog.LOBBY_ID || currentRoomId == ZombieRoomCatalog.V9_LOBBY_ID) {
             val handNx = 0.50f
             val handNy = 0.45f
             val room = currentRoom()
@@ -637,6 +640,7 @@ class ZombieGameViewModel(
             val handWy = handNy * room.worldHeight
             val distToHand = hypot(s.playerX - handWx, s.playerY - handWy)
             if (distToHand < 80f && !s.zombieModeActivated) {
+                // Seteamos el lobby correcto para la cinemática
                 _state.update { it.copy(showZombieCinematic = true) }
                 return
             }
@@ -649,7 +653,8 @@ class ZombieGameViewModel(
                 .contains(s.playerX, s.playerY)
         } ?: return
 
-        if (door.targetRoomId == ZombieRoomCatalog.LOBBY_ID && room.type == ZoneType.BUILDING) {
+        val lobbyId = ZombieRoomCatalog.getLobbyForRoom(room.id)
+        if (door.targetRoomId == lobbyId && room.type == ZoneType.BUILDING) {
             _state.update { it.copy(showExitToLobbyDialog = true) }
             return
         }
@@ -657,8 +662,9 @@ class ZombieGameViewModel(
     }
 
     fun confirmExitToLobby() {
+        val lobbyId = ZombieRoomCatalog.getLobbyForRoom(currentRoom().id)
         _state.update { it.copy(showExitToLobbyDialog = false) }
-        goToRoom(ZombieRoomCatalog.LOBBY_ID)
+        goToRoom(lobbyId)
     }
 
     fun dismissExitToLobby() {
@@ -797,8 +803,9 @@ class ZombieGameViewModel(
     fun consumeExit() { gameLoopJob?.cancel() }
 
     fun onZombieCinematicDismissed() {
+        val currentRoomId = currentRoom().id
         _state.update { it.copy(showZombieCinematic = false, zombieModeActivated = true) }
-        loadRoom(ZombieRoomCatalog.indexOfRoom(ZombieRoomCatalog.LOBBY_ID))
+        loadRoom(ZombieRoomCatalog.indexOfRoom(currentRoomId))
     }
 
     // ─── MODO DISEÑADOR DE LA MATRIZ DE COLISIÓN ───────────

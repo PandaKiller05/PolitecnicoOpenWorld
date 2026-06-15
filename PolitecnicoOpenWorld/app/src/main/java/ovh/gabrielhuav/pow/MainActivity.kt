@@ -1,6 +1,7 @@
 package ovh.gabrielhuav.pow
 
 import android.Manifest
+import android.content.ComponentCallbacks2
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -96,7 +97,7 @@ class MainActivity : ComponentActivity() {
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
             ovh.gabrielhuav.pow.features.map_exterior.ui.components.CharacterSpriteManager.clearCaches()
             ovh.gabrielhuav.pow.features.map_exterior.ui.components.VehicleSpriteManager.clearCaches()
             ovh.gabrielhuav.pow.features.map_exterior.ui.components.PoliceSpriteManager.clearCaches()
@@ -303,24 +304,40 @@ class MainActivity : ComponentActivity() {
                                 // Callback que se dispara cuando el video de ZombiHand
                                 // termina y hay un edificio destino pendiente.
                                 onNavigateToInterior = { routeName ->
+                                    // Esta función ya no se usa para zombis, se centraliza abajo.
                                     navController.navigate(routeName)
                                 }
                             )
                             // ─── ShineCTO: navegar al interior cuando el VM lo indique ───
                             val uiState by worldMapViewModel.uiState.collectAsState()
 
+                            // CENTRALIZACIÓN DE NAVEGACIÓN:
+                            // Este bloque vigila cuándo termina un video de carga (mano zombi) 
+                            // o un fade de puerta, y mueve la pantalla al destino guardado.
+                            LaunchedEffect(uiState.showZombiVideo, uiState.escomDoorFadeComplete) {
+                                val target = uiState.pendingInteriorDestination
+                                
+                                // CASO A: Terminó el video de la mano zombi (ZombiHand)
+                                if (!uiState.showZombiVideo && worldMapViewModel.pendingZombieMinigame && target != null) {
+                                    val roomId = if (target == InteriorBuilding.VOCA9) "voca9" else "lobby_campus"
+                                    android.util.Log.d("Navigation", "Navegando a Lobby Zombie: $roomId")
+                                    worldMapViewModel.clearPendingInteriorDestination()
+                                    worldMapViewModel.clearPendingZombieMinigame()
+                                    navController.navigate("zombie_minigame/$roomId")
+                                }
+
+                                // CASO B: Terminó el fade de la puerta (ESCOM / Voca 9 / Deportivos)
+                                if (uiState.escomDoorFadeComplete) {
+                                    val route = worldMapViewModel.consumeEscomDoorNavigation()
+                                    android.util.Log.d("Navigation", "Navegando a Puerta: $route")
+                                    navController.navigate(route)
+                                }
+                            }
+
                             LaunchedEffect(uiState.navigateToShineCTO) {
                                 if (uiState.navigateToShineCTO) {
                                     worldMapViewModel.consumeNavigateToShineCTO()
                                     navController.navigate("shinecto_interior")
-                                }
-                            }
-
-                            // NUEVO BLOQUE: Navegar al minijuego tras el fade de la puerta
-                            LaunchedEffect(uiState.escomDoorFadeComplete) {
-                                if (uiState.escomDoorFadeComplete) {
-                                    val route = worldMapViewModel.consumeEscomDoorNavigation()
-                                    navController.navigate(route)
                                 }
                             }
 
@@ -517,7 +534,7 @@ class MainActivity : ComponentActivity() {
                     fetchLastLocationFallback()
                 }
             }.addOnFailureListener { fetchLastLocationFallback() }
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             worldMapViewModel.updateInitialLocation(19.5045, -99.1469)
         }
     }
@@ -530,7 +547,7 @@ class MainActivity : ComponentActivity() {
                 else
                     worldMapViewModel.updateInitialLocation(19.5045, -99.1469)
             }
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             worldMapViewModel.updateInitialLocation(19.5045, -99.1469)
         }
     }

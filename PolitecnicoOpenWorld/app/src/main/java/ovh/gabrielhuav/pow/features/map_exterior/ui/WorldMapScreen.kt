@@ -277,13 +277,12 @@ fun WorldMapScreen(
 
     // Cuando el video de carga termina y hay un destino pendiente, navegar.
     // Solo manejamos el caso de la mano zombi (video) aquí.
-    // Las puertas se manejan en MainActivity tras el fade.
     LaunchedEffect(uiState.showZombiVideo, uiState.pendingInteriorDestination) {
         val target = uiState.pendingInteriorDestination
         if (target != null && !uiState.showZombiVideo && viewModel.pendingZombieMinigame) {
-            viewModel.clearPendingInteriorDestination()
-            viewModel.clearPendingZombieMinigame()
-            onNavigateToInterior("zombie_minigame/${target.id}")
+            // No hacemos nada aquí. Dejamos que MainActivity lo maneje
+            // o lo manejamos de forma segura.
+            // Para evitar conflictos, movemos la navegación al orquestador.
         }
     }
 

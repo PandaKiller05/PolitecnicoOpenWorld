@@ -120,11 +120,17 @@ fun ZombieGameScreen(
     }
 
     val room = ZombieRoomCatalog.rooms[state.currentRoomIndex]
+    val isVocaRoom = room.id.startsWith("v9") || room.id == "voca9"
+    
     val effectiveBgAsset = when {
         room.id == ZombieRoomCatalog.LOBBY_ID && state.zombieModeActivated ->
             "ZOMBIS_MOD/BUILDINGS_Z/building_escom_zombie.webp"
-        room.type == ZoneType.BUILDING && !state.zombieModeActivated ->
-            "INTERIORES/ESCOM/z_${room.id.removePrefix("za_")}.webp"
+        room.id == ZombieRoomCatalog.V9_LOBBY_ID && state.zombieModeActivated ->
+            room.backgroundAsset
+        room.type == ZoneType.BUILDING && !state.zombieModeActivated -> {
+            if (isVocaRoom) room.backgroundAsset
+            else "INTERIORES/ESCOM/z_${room.id.removePrefix("za_")}.webp"
+        }
         else -> room.backgroundAsset
     }
     var background by remember(effectiveBgAsset) { mutableStateOf<ImageBitmap?>(null) }
@@ -317,7 +323,8 @@ fun ZombieGameScreen(
                 }
 
                 // Zombis
-                val zSize = ZOMBIE_SPRITE_BASE * cam.scale
+                val roomSpriteScale = if (room.id.startsWith("v9") || room.id == "voca9") 1.4f else 1.0f
+                val zSize = ZOMBIE_SPRITE_BASE * cam.scale * roomSpriteScale
                 state.zombies.forEach { z ->
                     if (!onScreen(z.x, z.y)) return@forEach
                     key(z.id) {
@@ -334,7 +341,7 @@ fun ZombieGameScreen(
                 }
 
                 // Jugadores remotos
-                val rpSize = PLAYER_SPRITE_BASE * cam.scale
+                val rpSize = PLAYER_SPRITE_BASE * cam.scale * roomSpriteScale
                 state.remotePlayers.forEach { rp ->
                     if (!onScreen(rp.x, rp.y)) return@forEach
                     key(rp.id) {
@@ -353,6 +360,7 @@ fun ZombieGameScreen(
 
                 // NPCs civiles del interior (autoritativos del servidor): figuras humanas que
                 // deambulan/huyen de los zombis. Reusan RemotePlayerView (sin nombre).
+                val civSize = PLAYER_SPRITE_BASE * cam.scale * roomSpriteScale
                 state.interiorNpcs.forEach { npc ->
                     if (!onScreen(npc.x, npc.y)) return@forEach
                     key("civ_${npc.id}") {
@@ -360,10 +368,10 @@ fun ZombieGameScreen(
                             name = "",
                             action = npc.action,
                             facingRight = npc.facingRight,
-                            sizePx = rpSize,
+                            sizePx = civSize,
                             modifier = Modifier.absoluteOffset(
-                                x = with(density) { toScreenX(npc.x).toDp() } - with(density) { (rpSize / 2).toDp() },
-                                y = with(density) { toScreenY(npc.y).toDp() } - with(density) { (rpSize / 2).toDp() }
+                                x = with(density) { toScreenX(npc.x).toDp() } - with(density) { (civSize / 2).toDp() },
+                                y = with(density) { toScreenY(npc.y).toDp() } - with(density) { (civSize / 2).toDp() }
                             )
                         )
                     }
@@ -394,7 +402,7 @@ fun ZombieGameScreen(
                 }
 
                 // Jugador local
-                val pSize = PLAYER_SPRITE_BASE * cam.scale
+                val pSize = PLAYER_SPRITE_BASE * cam.scale * roomSpriteScale
                 // MUERTE: al morir, el jugador queda como "fantasmita" (semitransparente),
                 // igual que la animación de muerte de un NPC.
                 val ghostAlpha = if (state.showWastedScreen) 0.3f else 1f
@@ -410,8 +418,8 @@ fun ZombieGameScreen(
                         .alpha(ghostAlpha)
                 )
             }
-            // ─── Mano zombi fija en el lobby (desaparece tras activar el modo zombie) ──
-            if (room.id == ZombieRoomCatalog.LOBBY_ID && !state.zombieModeActivated) {
+            // ─── Mano zombi fija en los lobbies (desaparece tras activar el modo zombie) ──
+            if ((room.id == ZombieRoomCatalog.LOBBY_ID || room.id == ZombieRoomCatalog.V9_LOBBY_ID) && !state.zombieModeActivated) {
                 val handNx = 0.50f
                 val handNy = 0.45f
                 val handSizePx = 64f * cam.scale
